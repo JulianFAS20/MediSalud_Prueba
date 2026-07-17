@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: medisalud
+      POSTGRES_USER: medisalud
+      POSTGRES_PASSWORD: medisalud
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medisalud -d medisalud"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - medisalud-postgres:/var/lib/postgresql/data
+
+  api:
+    build: .
+    profiles: ["app"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      DB_URL: jdbc:postgresql://postgres:5432/medisalud
+      DB_USERNAME: medisalud
+      DB_PASSWORD: medisalud
+    ports:
+      - "8080:8080"
+
+volumes:
+  medisalud-postgres:

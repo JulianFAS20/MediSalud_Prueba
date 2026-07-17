@@ -1,0 +1,6 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/medisalud}
+    username: ${DB_USERNAME:medisalud}
+    password: ${DB_PASSWORD:medisalud}
+    driver-class-name: org.postgresql.Driver

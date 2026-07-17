@@ -1,0 +1,3 @@
+medisalud:
+  # 2030-01-16 10:20 en America/Bogota. Perfil exclusivo para pruebas manuales de RN-05.
+  reloj-fijo: 2030-01-16T15:20:00Z
