@@ -30,6 +30,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.sql.SQLException;
 import java.time.Clock;
@@ -57,10 +58,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PostgreSqlPersistenceIntegrationTest {
 
     private static final ZoneId ZONA = ZoneId.of("America/Bogota");
+    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse(
+                    "postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193")
+            .asCompatibleSubstituteFor("postgres");
 
     @Container
     private static final PostgreSQLContainer<?> POSTGRESQL =
-            new PostgreSQLContainer<>("postgres:17-alpine")
+            new PostgreSQLContainer<>(POSTGRES_IMAGE)
                     .withDatabaseName("medisalud_test")
                     .withUsername("medisalud")
                     .withPassword("medisalud");

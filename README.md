@@ -68,7 +68,16 @@ java -jar target/medisalud-api-1.0.0.jar
 
 ### Ejecutar con PostgreSQL
 
-El puerto `5432` debe estar libre si se publica PostgreSQL en el host. Para iniciar solamente la base:
+El perfil `postgres` no contiene credenciales predeterminadas: exige `DB_URL`, `DB_USERNAME` y
+`DB_PASSWORD`. Para Compose, copie el ejemplo ignorado por Git y complete un usuario y una contraseña
+exclusivos de su entorno:
+
+```bash
+cp .env.example .env
+```
+
+En PowerShell use `Copy-Item .env.example .env`. El puerto `5432` debe estar libre si se publica
+PostgreSQL en el host. Después de completar `.env`, puede iniciar solamente la base:
 
 ```bash
 docker compose up -d postgres
@@ -78,13 +87,20 @@ En PowerShell:
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE="postgres"
+$env:DB_URL="jdbc:postgresql://localhost:5432/medisalud"
+$env:DB_USERNAME="<usuario>"
+$env:DB_PASSWORD="<contraseña>"
 mvn spring-boot:run
 ```
 
 En Bash:
 
 ```bash
-SPRING_PROFILES_ACTIVE=postgres mvn spring-boot:run
+SPRING_PROFILES_ACTIVE=postgres \
+DB_URL="jdbc:postgresql://localhost:5432/medisalud" \
+DB_USERNAME="<usuario>" \
+DB_PASSWORD="<contraseña>" \
+mvn spring-boot:run
 ```
 
 Para construir y ejecutar API y PostgreSQL como contenedores:
@@ -94,7 +110,8 @@ mvn clean package
 docker compose --profile app up --build
 ```
 
-Las credenciales del Compose son exclusivamente de desarrollo y pueden sustituirse con las variables DB_URL, DB_USERNAME y DB_PASSWORD.
+`.env` está excluido del repositorio. Compose construye internamente `DB_URL` y se detiene antes de crear
+contenedores cuando `DB_USERNAME` o `DB_PASSWORD` faltan o están vacíos.
 
 ## Arquitectura
 
@@ -558,13 +575,22 @@ La suite incluye:
 - Mensajes 500 sin trazas ni detalles internos.
 - Restricciones de integridad, llaves foráneas, optimistic locking e índices por médico/paciente/fecha.
 - open-in-view deshabilitado.
-- No se incluyen secretos de producción.
+- `.dockerignore` usa una lista permitida y solo envía el Dockerfile y el JAR al contexto de construcción.
+- Temurin está fijado a Java `21.0.9+10` y digest SHA-256; PostgreSQL de Compose y Testcontainers también usa digest inmutable.
+- La API se ejecuta como UID/GID `10001`, con filesystem de solo lectura, `/tmp` efímero, sin capabilities y con `no-new-privileges`.
+- El perfil PostgreSQL no inicia sin `DB_URL`, `DB_USERNAME` y `DB_PASSWORD`; `.env` y archivos de secretos están ignorados por Git.
+- Dependabot revisa semanalmente Maven, Dockerfile, Docker Compose y GitHub Actions.
+- Dependency Review analiza cada pull request y bloquea dependencias nuevas con vulnerabilidades `high` o `critical`.
 - No se implementa autenticación/autorización porque fue excluida explícitamente del alcance.
+
+La automatización sigue la configuración recomendada por la
+[documentación oficial de Dependency Review](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/configure-dependency-review-action)
+y las [actualizaciones de versión de Dependabot](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-version-updates).
 
 ## Evolución y despliegue
 
-La entrega no depende de una URL pública en nube. El `Dockerfile` usa una imagen JRE 21 y Compose ofrece
-PostgreSQL, por lo que el mismo artefacto puede publicarse posteriormente en Azure Container Apps,
+La entrega no depende de una URL pública en nube. El `Dockerfile` usa una imagen JRE 21 inmutable y sin
+root, y Compose ofrece PostgreSQL; el mismo artefacto puede publicarse posteriormente en Azure Container Apps,
 AWS App Runner, Google Cloud Run, Render o Railway. Para producción se recomienda además:
 
 - proveedor administrado de PostgreSQL y secretos en el gestor de la nube;
