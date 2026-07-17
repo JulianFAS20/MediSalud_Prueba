@@ -6,7 +6,7 @@ RUN mvn --batch-mode --no-transfer-progress dependency:go-offline
 COPY src ./src
 RUN mvn --batch-mode --no-transfer-progress -Dmaven.test.skip=true -Djacoco.skip=true package
 
-FROM eclipse-temurin:21.0.9_10-jre-alpine@sha256:08eecc477dbe3f2e33daac27f36e41daf7f4ec51d2f3396006e54fa41832c74c
+FROM eclipse-temurin:24.0.2_12-jre-alpine@sha256:4044b6c87cb088885bcd0220f7dc7a8a4aab76577605fa471945d2e98270741f
 
 RUN addgroup -S -g 10001 medisalud \
     && adduser -S -D -H -u 10001 -G medisalud medisalud
