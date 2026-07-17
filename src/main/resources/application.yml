@@ -29,6 +29,18 @@ springdoc:
     tags-sorter: alpha
     display-request-duration: true
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+    jmx:
+      exposure:
+        exclude: "*"
+  endpoint:
+    health:
+      show-details: never
+
 medisalud:
   zona-horaria: America/Bogota
   festivos: []

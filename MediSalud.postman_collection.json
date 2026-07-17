@@ -247,8 +247,8 @@
                 "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/api/v1/citas?page=0&size=100",
-            "description": "Genera documentos únicos, limpia IDs de la ejecución anterior y comprueba GET /citas."
+            "url": "{{baseUrl}}/actuator/health",
+            "description": "Genera documentos únicos, limpia IDs de la ejecución anterior y comprueba GET /actuator/health."
           },
           "event": [
             {
@@ -281,8 +281,8 @@
                   "pm.test(\"HTTP 200\", function () {",
                   "  pm.response.to.have.status(200);",
                   "});",
-                  "pm.test(\"La API devuelve una lista\", function () {",
-                  "  pm.expect(pm.response.json()).to.be.an(\"array\");",
+                  "pm.test(\"Actuator confirma que la API esta disponible\", function () {",
+                  "  pm.expect(pm.response.json().status).to.eql(\"UP\");",
                   "});",
                   "pm.test(\"Fechas dinámicas preparadas\", function () {",
                   "  pm.expect(pm.collectionVariables.get(\"workDate\")).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",

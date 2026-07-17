@@ -22,7 +22,7 @@ incorporar correcciones de seguridad publicadas después del BOM de esa versión
 
 | Área | Tecnología |
 |---|---|
-| Lenguaje y framework | Java 21, Spring Boot 3.5.15, Spring Web MVC, OpenAPI 3.1 y Swagger UI |
+| Lenguaje y framework | Java 21, Spring Boot 3.5.15, Spring Web MVC, Actuator, OpenAPI 3.1 y Swagger UI |
 | Validación | Jakarta Bean Validation y validaciones de dominio |
 | Persistencia | Spring Data JPA, Hibernate, Flyway |
 | Bases de datos | H2 para ejecución local y PostgreSQL 17 para un entorno productivo simulado |
@@ -60,10 +60,15 @@ La documentación ejecutable se genera desde los controladores y modelos REST:
 
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - Contrato OpenAPI JSON: http://localhost:8080/v3/api-docs
+- Salud operativa: http://localhost:8080/actuator/health
 
 Swagger UI incluye ejemplos de entrada, respuestas de éxito y el formato uniforme `ApiError` para los
 errores esperados. También permite ejecutar solicitudes contra la instancia local. La integración utiliza
 [springdoc-openapi 2.x](https://springdoc.org/), compatible con Spring Boot 3.
+
+El endpoint de salud responde `{"status":"UP"}` cuando la aplicación y sus dependencias están
+disponibles. Actuator expone por HTTP únicamente `health`, sin detalles internos; los demás endpoints
+de administración y la exposición JMX permanecen deshabilitados.
 
 H2 es volátil en este perfil: al detener la aplicación se eliminan médicos adicionales, pacientes, citas y
 penalizaciones. Los tres médicos semilla se vuelven a cargar en el siguiente arranque.
@@ -121,6 +126,10 @@ docker compose --profile app up --build
 
 `.env` está excluido del repositorio. Compose construye internamente `DB_URL` y se detiene antes de crear
 contenedores cuando `DB_USERNAME` o `DB_PASSWORD` faltan o están vacíos.
+
+La imagen de la API incorpora un `HEALTHCHECK` que consulta `/actuator/health` cada 10 segundos, concede
+30 segundos de arranque y marca el contenedor como no saludable después de cinco fallos consecutivos.
+Docker Compose hereda esta comprobación directamente del `Dockerfile`.
 
 ## Arquitectura
 
@@ -533,7 +542,7 @@ Al cancelar una cita PROGRAMADA:
 
 ## Pruebas
 
-La suite contiene 120 pruebas automatizadas cuando Docker está disponible. Para ejecutarlas:
+La suite contiene 123 pruebas automatizadas cuando Docker está disponible. Para ejecutarlas:
 
 ```bash
 mvn test
@@ -551,7 +560,7 @@ el artefacto descargable `jacoco-report-<numero-ejecucion>` durante 14 días, in
 posterior falla después de haber generado el reporte. Los artefactos se descargan desde la sección
 **Artifacts** de cada workflow run, según la [documentación de GitHub](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts).
 
-La medición actual es 98,78 % de líneas y 92,22 % de ramas.
+La medición actual es 99,24 % de líneas y 92,22 % de ramas.
 
 ### PostgreSQL real con Testcontainers
 
@@ -581,6 +590,8 @@ La suite incluye:
 - Disponibilidad acotada a 90 días y paginación con límites, metadatos y filtros combinados.
 - Contrato global de errores para dominio, Bean Validation, JSON, parámetros, persistencia, 404, 405, 415 y 500 seguros.
 - Generación real del contrato OpenAPI, Swagger UI, ejemplos de error y ausencia de DTOs de aplicación en los schemas REST públicos.
+- Registro REST positivo de médicos, incluyendo `201`, UUID generado, `application/json` y campos exactos de `MedicoResponse`.
+- Salud operativa `UP`, ocultamiento de detalles y rechazo de endpoints Actuator no expuestos.
 - Calendario colombiano, incluyendo Ley Emiliani, Pascua y el festivo creado en 2026.
 - Restricciones de arquitectura hexagonal con ArchUnit.
 - GitHub Actions ejecuta `mvn verify`, PostgreSQL Testcontainers y la barrera JaCoCo en cada push a `main` y pull request; el HTML de cobertura queda disponible como artefacto de la ejecución.
@@ -596,6 +607,7 @@ La suite incluye:
 - `.dockerignore` usa una lista permitida y solo envía el Dockerfile y el JAR al contexto de construcción.
 - Temurin está fijado a Java `21.0.9+10` y digest SHA-256; PostgreSQL de Compose y Testcontainers también usa digest inmutable.
 - La API se ejecuta como UID/GID `10001`, con filesystem de solo lectura, `/tmp` efímero, sin capabilities y con `no-new-privileges`.
+- El contenedor informa su estado mediante un healthcheck HTTP real contra `/actuator/health`.
 - El perfil PostgreSQL no inicia sin `DB_URL`, `DB_USERNAME` y `DB_PASSWORD`; `.env` y archivos de secretos están ignorados por Git.
 - Dependabot revisa semanalmente Maven, Dockerfile, Docker Compose y GitHub Actions.
 - Dependency Review analiza cada pull request y bloquea dependencias nuevas con vulnerabilidades `high` o `critical`.
