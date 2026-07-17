@@ -21,3 +21,5 @@ server:
 medisalud:
   zona-horaria: America/Bogota
   festivos: []
+  maximo-dias-disponibilidad: ${MEDISALUD_MAXIMO_DIAS_DISPONIBILIDAD:90}
+  maximo-tamanio-pagina-citas: ${MEDISALUD_MAXIMO_TAMANIO_PAGINA_CITAS:100}

@@ -3,13 +3,15 @@ package com.medisalud.infrastructure.adapter.out.persistence;
 import com.medisalud.domain.model.Cita;
 import com.medisalud.domain.model.EstadoCita;
 import com.medisalud.domain.model.FiltroCitas;
+import com.medisalud.domain.model.Pagina;
+import com.medisalud.domain.model.Paginacion;
 import com.medisalud.domain.port.CitaRepositoryPort;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -54,7 +56,7 @@ public class CitaPersistenceAdapter implements CitaRepositoryPort {
     }
 
     @Override
-    public List<Cita> buscar(FiltroCitas filtro) {
+    public Pagina<Cita> buscar(FiltroCitas filtro, Paginacion paginacion) {
         Specification<CitaJpaEntity> especificacion = Specification.allOf();
         if (filtro.medicoId() != null) {
             especificacion = especificacion.and((root, query, cb) -> cb.equal(root.get("medicoId"), filtro.medicoId()));
@@ -73,9 +75,17 @@ public class CitaPersistenceAdapter implements CitaRepositoryPort {
             especificacion = especificacion.and((root, query, cb) ->
                     cb.lessThanOrEqualTo(root.get("fechaHora"), filtro.fechaFin()));
         }
-        return repository.findAll(especificacion, Sort.by(Sort.Direction.ASC, "fechaHora"))
-                .stream()
-                .map(CitaJpaEntity::aDominio)
-                .toList();
+        Sort ordenEstable = Sort.by(
+                Sort.Order.asc("fechaHora"),
+                Sort.Order.asc("id"));
+        var pagina = repository.findAll(
+                especificacion,
+                PageRequest.of(paginacion.pagina(), paginacion.tamanio(), ordenEstable));
+        return new Pagina<>(
+                pagina.getContent().stream().map(CitaJpaEntity::aDominio).toList(),
+                pagina.getNumber(),
+                pagina.getSize(),
+                pagina.getTotalElements(),
+                pagina.getTotalPages());
     }
 }

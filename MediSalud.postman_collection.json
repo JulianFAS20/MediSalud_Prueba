@@ -247,7 +247,7 @@
                 "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/api/v1/citas",
+            "url": "{{baseUrl}}/api/v1/citas?page=0&size=100",
             "description": "Genera documentos únicos, limpia IDs de la ejecución anterior y comprueba GET /citas."
           },
           "event": [
@@ -608,6 +608,40 @@
                   "  pm.expect(body).to.have.property(\"timestamp\");",
                   "  pm.expect(body.status).to.eql(400);",
                   "  pm.expect(body.codigo).to.eql(\"RANGO_FECHAS_INVALIDO\");",
+                  "  pm.expect(body).to.have.property(\"mensaje\");",
+                  "  pm.expect(body).to.have.property(\"path\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechazar disponibilidad mayor a 90 días",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/medicos/{{medicoSemilla1}}/disponibilidad?fechaInicio=2030-01-01&fechaFin=2030-04-01",
+            "description": "El rango es inclusivo: estas fechas abarcan 91 días calendario y superan el máximo configurable de 90."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Contrato ApiError: RANGO_DEMASIADO_AMPLIO\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(400);",
+                  "  pm.expect(body.codigo).to.eql(\"RANGO_DEMASIADO_AMPLIO\");",
                   "  pm.expect(body).to.have.property(\"mensaje\");",
                   "  pm.expect(body).to.have.property(\"path\");",
                   "});"
@@ -1136,7 +1170,11 @@
                   "  pm.response.to.have.status(200);",
                   "});",
                   "pm.test(\"Incluye la cita principal\", function () {",
-                  "  const ids = pm.response.json().map(cita => cita.id);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.pagina).to.eql(0);",
+                  "  pm.expect(body.tamanio).to.eql(100);",
+                  "  pm.expect(body.totalElementos).to.be.a(\"number\");",
+                  "  const ids = body.contenido.map(cita => cita.id);",
                   "  pm.expect(ids).to.include(pm.collectionVariables.get(\"citaPrincipalId\"));",
                   "});"
                 ]
@@ -1154,7 +1192,7 @@
                 "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/api/v1/citas?medicoId={{medicoSemilla1}}&estado=PROGRAMADA&fechaInicio={{filterStart}}&fechaFin={{filterEnd}}",
+            "url": "{{baseUrl}}/api/v1/citas?medicoId={{medicoSemilla1}}&estado=PROGRAMADA&fechaInicio={{filterStart}}&fechaFin={{filterEnd}}&page=0&size=100",
             "description": ""
           },
           "event": [
@@ -1167,7 +1205,7 @@
                   "  pm.response.to.have.status(200);",
                   "});",
                   "pm.test(\"Todos los resultados cumplen los filtros\", function () {",
-                  "  const citas = pm.response.json();",
+                  "  const citas = pm.response.json().contenido;",
                   "  pm.expect(citas).to.be.an(\"array\").and.not.empty;",
                   "  citas.forEach(cita => {",
                   "    pm.expect(cita.medicoId).to.eql(pm.collectionVariables.get(\"medicoSemilla1\"));",
@@ -1189,7 +1227,7 @@
                 "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/api/v1/citas?pacienteId={{pacienteId}}",
+            "url": "{{baseUrl}}/api/v1/citas?pacienteId={{pacienteId}}&page=0&size=100",
             "description": ""
           },
           "event": [
@@ -1202,7 +1240,7 @@
                   "  pm.response.to.have.status(200);",
                   "});",
                   "pm.test(\"Solo devuelve citas del paciente\", function () {",
-                  "  pm.response.json().forEach(cita => pm.expect(cita.pacienteId).to.eql(pm.collectionVariables.get(\"pacienteId\")));",
+                  "  pm.response.json().contenido.forEach(cita => pm.expect(cita.pacienteId).to.eql(pm.collectionVariables.get(\"pacienteId\")));",
                   "});"
                 ]
               }
@@ -1906,7 +1944,7 @@
                 "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/api/v1/citas?pacienteId={{pacienteId}}&estado=CANCELADA",
+            "url": "{{baseUrl}}/api/v1/citas?pacienteId={{pacienteId}}&estado=CANCELADA&page=0&size=100",
             "description": ""
           },
           "event": [
@@ -1919,7 +1957,7 @@
                   "  pm.response.to.have.status(200);",
                   "});",
                   "pm.test(\"La cita original aparece CANCELADA\", function () {",
-                  "  const ids = pm.response.json().map(cita => cita.id);",
+                  "  const ids = pm.response.json().contenido.map(cita => cita.id);",
                   "  pm.expect(ids).to.include(pm.collectionVariables.get(\"citaPrincipalId\"));",
                   "});"
                 ]
@@ -2078,7 +2116,7 @@
                 "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/api/v1/citas?pacienteId={{pacienteId}}&estado=PROGRAMADA",
+            "url": "{{baseUrl}}/api/v1/citas?pacienteId={{pacienteId}}&estado=PROGRAMADA&page=0&size=100",
             "description": ""
           },
           "event": [
@@ -2091,7 +2129,7 @@
                   "  pm.response.to.have.status(200);",
                   "});",
                   "pm.test(\"La cita no fue cancelada por la reprogramación fallida\", function () {",
-                  "  const ids = pm.response.json().map(cita => cita.id);",
+                  "  const ids = pm.response.json().contenido.map(cita => cita.id);",
                   "  pm.expect(ids).to.include(pm.collectionVariables.get(\"citaReprogramadaId\"));",
                   "});"
                 ]
@@ -2300,6 +2338,70 @@
                   "  pm.expect(body.codigo).to.eql(\"RANGO_FECHAS_INVALIDO\");",
                   "  pm.expect(body).to.have.property(\"mensaje\");",
                   "  pm.expect(body).to.have.property(\"path\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Página negativa al listar",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/citas?page=-1",
+            "description": "La numeración es base cero y no admite valores negativos."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Contrato ApiError: PAGINA_INVALIDA\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(400);",
+                  "  pm.expect(body.codigo).to.eql(\"PAGINA_INVALIDA\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tamaño de página superior al máximo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/citas?size=101",
+            "description": "El máximo configurable por defecto es 100 elementos."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Contrato ApiError: TAMANIO_PAGINA_INVALIDO\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(400);",
+                  "  pm.expect(body.codigo).to.eql(\"TAMANIO_PAGINA_INVALIDO\");",
                   "});"
                 ]
               }

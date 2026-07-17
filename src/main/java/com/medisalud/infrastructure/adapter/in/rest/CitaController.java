@@ -9,6 +9,7 @@ import com.medisalud.domain.model.EstadoCita;
 import com.medisalud.infrastructure.adapter.in.rest.request.ReprogramarCitaRequest;
 import com.medisalud.infrastructure.adapter.in.rest.request.ReservarCitaRequest;
 import com.medisalud.infrastructure.adapter.in.rest.response.CitaResponse;
+import com.medisalud.infrastructure.adapter.in.rest.response.PaginaCitasResponse;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -25,7 +26,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.util.List;
 import java.util.UUID;
 
 @Validated
@@ -71,22 +71,23 @@ public class CitaController {
     }
 
     @GetMapping
-    public List<CitaResponse> listar(
+    public PaginaCitasResponse listar(
             @RequestParam(required = false) UUID medicoId,
             @RequestParam(required = false) UUID pacienteId,
             @RequestParam(required = false) EstadoCita estado,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             OffsetDateTime fechaInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            OffsetDateTime fechaFin) {
-        return listarCitas.ejecutar(
+            OffsetDateTime fechaFin,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) Integer size) {
+        return PaginaCitasResponse.desde(listarCitas.ejecutar(
                         medicoId,
                         pacienteId,
                         estado,
                         fechaInicio == null ? null : fechaInicio.toInstant(),
-                        fechaFin == null ? null : fechaFin.toInstant())
-                .stream()
-                .map(cita -> CitaResponse.desde(cita, zonaHoraria))
-                .toList();
+                        fechaFin == null ? null : fechaFin.toInstant(),
+                        page,
+                        size), zonaHoraria);
     }
 }

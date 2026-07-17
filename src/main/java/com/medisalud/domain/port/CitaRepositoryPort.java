@@ -2,9 +2,10 @@ package com.medisalud.domain.port;
 
 import com.medisalud.domain.model.Cita;
 import com.medisalud.domain.model.FiltroCitas;
+import com.medisalud.domain.model.Pagina;
+import com.medisalud.domain.model.Paginacion;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -21,5 +22,5 @@ public interface CitaRepositoryPort {
 
     Set<Instant> buscarFranjasOcupadas(UUID medicoId, Instant desdeInclusive, Instant hastaExclusivo);
 
-    List<Cita> buscar(FiltroCitas filtro);
+    Pagina<Cita> buscar(FiltroCitas filtro, Paginacion paginacion);
 }

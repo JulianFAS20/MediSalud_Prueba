@@ -129,6 +129,7 @@ Esta arquitectura encaja bien porque las reglas de horarios, conflictos, penaliz
 - Strategy: PenalizacionCancelacionStrategy aísla RN-05 del flujo de cancelación.
 - Unit of Work: cancelación + penalización + nueva reserva se ejecutan en una transacción. Una reprogramación fallida revierte todo.
 - Concurrencia: además de consultar disponibilidad, la base usa claves únicas anulables para la franja activa de médico y paciente. Dos solicitudes simultáneas no pueden confirmar la misma franja.
+- Paginación: el dominio define `Paginacion` y `Pagina<T>` sin depender de Spring; el adaptador JPA traduce el contrato a `PageRequest` con orden estable por fecha e ID.
 - Persistencia: Flyway administra el esquema; Hibernate se limita a validarlo.
 - Identificadores: UUID evita acoplamiento a secuencias y facilita distribución futura.
 - Tiempo: la API exige ISO 8601 con offset, el dominio persiste Instant y las reglas laborales se evalúan en America/Bogota.
@@ -137,7 +138,7 @@ Esta arquitectura encaja bien porque las reglas de horarios, conflictos, penaliz
 
 - RN-04 contiene una contradicción entre “mismo médico” y “aunque sea otro médico”. Se aplica la alternativa segura: un paciente no puede tener dos citas programadas en la misma franja, incluso con médicos distintos.
 - Fecha de nacimiento es opcional porque RF-02 no la exige. Si falta, RN-03 asume edad cero; si está en el futuro, la reserva se rechaza.
-- La consulta de disponibilidad usa un rango inclusivo de fechas y no devuelve franjas pasadas.
+- La consulta de disponibilidad usa un rango inclusivo de hasta 90 días calendario y no devuelve franjas pasadas.
 - fechaInicio y fechaFin del listado se comparan como instantes; ambos filtros son inclusivos.
 - `ATENDIDA` se conserva como estado consultable porque RF-06 lo define, pero el MVP no expone una transición a atendida porque ningún requerimiento solicita ese endpoint.
 
@@ -148,9 +149,9 @@ Esta arquitectura encaja bien porque las reglas de horarios, conflictos, penaliz
 | RF-01 | Registro de médicos con campos obligatorios, opcionales y validación de formato. |
 | RF-02 | Registro de pacientes y unicidad del documento en aplicación/persistencia. |
 | RF-03 | Reserva con referencias válidas, fecha ISO 8601 con offset y estado inicial `PROGRAMADA`. |
-| RF-04 | Disponibilidad inclusiva por médico y rango, en intervalos libres de 30 minutos. |
+| RF-04 | Disponibilidad inclusiva por médico y rango acotado, en intervalos libres de 30 minutos. |
 | RF-05 | Cancelación, registro de `canceladaEn` y evaluación transaccional de penalización. |
-| RF-06 | Listado con filtros combinables por médico, paciente, estado y rango de instantes. |
+| RF-06 | Listado paginado con filtros combinables por médico, paciente, estado y rango de instantes. |
 | RN-01 | Validador de horario laboral, domingo y calendario de festivos colombianos. |
 | RN-02 | Consulta preventiva y restricción única de franja activa por médico. |
 | RN-03 | Validación de fecha de nacimiento al reservar; ausencia equivale a edad cero. |
@@ -174,7 +175,13 @@ Se pueden sumar cierres extraordinarios en `application.yml`:
 medisalud:
   festivos:
     - 2026-09-10
+  maximo-dias-disponibilidad: 90
+  maximo-tamanio-pagina-citas: 100
 ```
+
+Los límites también pueden sobrescribirse con `MEDISALUD_MAXIMO_DIAS_DISPONIBILIDAD` y
+`MEDISALUD_MAXIMO_TAMANIO_PAGINA_CITAS`. Ambos deben ser mayores que cero; una configuración inválida
+impide iniciar la aplicación.
 
 ## Datos iniciales
 
@@ -188,7 +195,7 @@ Los datos se insertan solo cuando la tabla de médicos está vacía.
 
 ## Colección Postman
 
-La raíz del proyecto incluye una colección de Postman con 60 escenarios agrupados en ocho carpetas:
+La raíz del proyecto incluye una colección de Postman con 63 escenarios agrupados en ocho carpetas:
 
 - [`MediSalud.postman_collection.json`](./MediSalud.postman_collection.json): colección principal.
 - [`MediSalud.RN05.postman_environment.json`](./MediSalud.RN05.postman_environment.json): ambiente auxiliar para ejecutar RN-05 con reloj fijo.
@@ -256,10 +263,10 @@ Los ejemplos de esta sección suponen el perfil `local` con reloj real. No deben
 | `POST` | `/medicos` | JSON de médico | `201 Created` |
 | `POST` | `/pacientes` | JSON de paciente | `201 Created` |
 | `POST` | `/citas` | paciente, médico y fecha/hora | `201 Created` |
-| `GET` | `/medicos/{medicoId}/disponibilidad` | `fechaInicio` y `fechaFin` obligatorios | `200 OK` |
+| `GET` | `/medicos/{medicoId}/disponibilidad` | `fechaInicio` y `fechaFin`, máximo 90 días inclusivos | `200 OK` |
 | `PATCH` | `/citas/{citaId}/cancelacion` | Sin body | `200 OK` |
 | `POST` | `/citas/{citaId}/reprogramacion` | nueva fecha/hora | `201 Created` |
-| `GET` | `/citas` | Filtros opcionales | `200 OK` |
+| `GET` | `/citas` | Filtros opcionales, `page` y `size` | `200 OK` |
 
 Los UUID de esta sección son ilustrativos y cada ejemplo es independiente. Los comandos usan sintaxis
 Bash/Git Bash; en PowerShell puede usar la colección Postman o invocar explícitamente `curl.exe`.
@@ -353,7 +360,8 @@ Respuesta `200 OK` abreviada:
 `cantidadFranjasDisponibles` siempre coincide con el tamaño de `franjasDisponibles` y representa
 el total del rango solicitado. Cuando no existe disponibilidad, la API conserva `200 OK` y devuelve
 `{"cantidadFranjasDisponibles": 0, "franjasDisponibles": []}`. El rango de fechas es inclusivo y
-la respuesta real contiene todas las franjas libres futuras.
+la respuesta real contiene todas las franjas libres futuras. Se admiten como máximo 90 días calendario;
+un rango mayor devuelve `400 RANGO_DEMASIADO_AMPLIO` antes de consultar persistencia.
 
 ### Cancelar cita
 
@@ -409,7 +417,7 @@ La cita anterior queda `CANCELADA`. Si cualquier validación falla, ambos cambio
 Todos los parámetros son opcionales y combinables:
 
 ```bash
-curl "http://localhost:8080/api/v1/citas?medicoId=00000000-0000-0000-0000-000000000001&estado=PROGRAMADA&fechaInicio=2027-02-01T00:00:00-05:00&fechaFin=2027-02-28T23:59:59-05:00"
+curl "http://localhost:8080/api/v1/citas?medicoId=00000000-0000-0000-0000-000000000001&estado=PROGRAMADA&fechaInicio=2027-02-01T00:00:00-05:00&fechaFin=2027-02-28T23:59:59-05:00&page=0&size=20"
 ```
 
 | Parámetro | Tipo | Valores |
@@ -419,21 +427,35 @@ curl "http://localhost:8080/api/v1/citas?medicoId=00000000-0000-0000-0000-000000
 | `estado` | enum | `PROGRAMADA`, `CANCELADA`, `ATENDIDA` |
 | `fechaInicio` | ISO 8601 con offset | Límite inferior inclusivo |
 | `fechaFin` | ISO 8601 con offset | Límite superior inclusivo |
+| `page` | entero | Página base cero; valor predeterminado `0` |
+| `size` | entero | Elementos por página; predeterminado `20` o el máximo configurado si es menor; máximo inicial `100` |
 
 Respuesta `200 OK` abreviada:
 
 ```json
-[
-  {
-    "id": "57edcb1c-c001-4623-98fb-7f7b17474382",
-    "pacienteId": "d05bc052-9b4b-4023-bd1a-669f55aaebd8",
-    "medicoId": "00000000-0000-0000-0000-000000000001",
-    "fechaHora": "2027-02-01T08:00:00-05:00",
-    "fechaHoraFin": "2027-02-01T08:30:00-05:00",
-    "estado": "PROGRAMADA"
-  }
-]
+{
+  "contenido": [
+    {
+      "id": "57edcb1c-c001-4623-98fb-7f7b17474382",
+      "pacienteId": "d05bc052-9b4b-4023-bd1a-669f55aaebd8",
+      "medicoId": "00000000-0000-0000-0000-000000000001",
+      "fechaHora": "2027-02-01T08:00:00-05:00",
+      "fechaHoraFin": "2027-02-01T08:30:00-05:00",
+      "estado": "PROGRAMADA"
+    }
+  ],
+  "pagina": 0,
+  "tamanio": 20,
+  "totalElementos": 1,
+  "totalPaginas": 1,
+  "primera": true,
+  "ultima": true
+}
 ```
+
+La ordenación es ascendente por `fechaHora` y luego por `id`, lo que evita saltos o duplicados entre
+páginas cuando varias citas tienen el mismo instante. `page < 0`, `size < 1` o un tamaño superior al
+máximo devuelven `400` con un código de error explícito.
 
 ## Errores
 
@@ -478,7 +500,7 @@ Al cancelar una cita PROGRAMADA:
 
 ## Pruebas
 
-La suite contiene 95 pruebas automatizadas. Para ejecutarlas:
+La suite contiene 109 pruebas automatizadas. Para ejecutarlas:
 
 ```bash
 mvn test
@@ -491,8 +513,8 @@ La verificación completa genera el JAR, el reporte JaCoCo y comprueba los umbra
 mvn clean verify
 ```
 
-El reporte navegable queda en `target/site/jacoco/index.html`. La medición actual es 98,65 % de
-líneas y 90,13 % de ramas.
+El reporte navegable queda en `target/site/jacoco/index.html`. La medición actual es 98,75 % de
+líneas y 91,67 % de ramas.
 
 La suite incluye:
 
@@ -502,7 +524,7 @@ La suite incluye:
 - RN-03 con fecha de nacimiento ausente, actual y futura.
 - RN-05 en los límites de dos horas y treinta días, además del ciclo integral de tres penalizaciones y bloqueo.
 - Reprogramación exitosa y rollback completo cuando la nueva franja está ocupada.
-- Disponibilidad, registro, cancelación y filtros combinados con rangos inclusivos.
+- Disponibilidad acotada a 90 días y paginación con límites, metadatos y filtros combinados.
 - Contrato global de errores para dominio, Bean Validation, JSON, parámetros, persistencia, 404, 405, 415 y 500 seguros.
 - Calendario colombiano, incluyendo Ley Emiliani, Pascua y el festivo creado en 2026.
 - Restricciones de arquitectura hexagonal con ArchUnit.
@@ -512,6 +534,7 @@ La suite incluye:
 
 - Bean Validation en el borde HTTP y validación defensiva dentro del dominio.
 - Consultas parametrizadas por Spring Data/JPA; no se concatena SQL de usuario.
+- Rangos de disponibilidad y tamaños de página acotados antes de ejecutar consultas costosas.
 - Mensajes 500 sin trazas ni detalles internos.
 - Restricciones de integridad, llaves foráneas, optimistic locking e índices por médico/paciente/fecha.
 - open-in-view deshabilitado.
@@ -527,7 +550,6 @@ AWS App Runner, Google Cloud Run, Render o Railway. Para producción se recomien
 - proveedor administrado de PostgreSQL y secretos en el gestor de la nube;
 - autenticación OIDC/JWT y autorización por rol;
 - observabilidad con Actuator/OpenTelemetry;
-- paginación del listado y límite de rango de disponibilidad;
 - idempotency keys para clientes móviles;
 - outbox/eventos para recordatorios;
 - calendario clínico por médico, sede y zona horaria.

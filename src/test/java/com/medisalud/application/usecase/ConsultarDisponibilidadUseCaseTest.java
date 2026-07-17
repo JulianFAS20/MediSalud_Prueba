@@ -28,6 +28,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class ConsultarDisponibilidadUseCaseTest {
@@ -52,7 +54,7 @@ class ConsultarDisponibilidadUseCaseTest {
         lenient().when(medicos.buscarPorId(medicoId)).thenReturn(Optional.of(medico));
         useCase = new ConsultarDisponibilidadUseCase(
                 medicos, citas, new PoliticaHorarioAtencion(festivos),
-                Clock.fixed(AHORA, ZoneOffset.UTC), ZONA);
+                Clock.fixed(AHORA, ZoneOffset.UTC), ZONA, 90);
     }
 
     @Test
@@ -101,7 +103,7 @@ class ConsultarDisponibilidadUseCaseTest {
         Instant nueveLocal = miercoles.atTime(9, 0).atZone(ZONA).toInstant();
         var useCaseConHoraAvanzada = new ConsultarDisponibilidadUseCase(
                 medicos, citas, new PoliticaHorarioAtencion(festivos),
-                Clock.fixed(nueveLocal, ZoneOffset.UTC), ZONA);
+                Clock.fixed(nueveLocal, ZoneOffset.UTC), ZONA, 90);
         when(citas.buscarFranjasOcupadas(eq(medicoId), any(Instant.class), any(Instant.class)))
                 .thenReturn(Set.of());
 
@@ -130,5 +132,32 @@ class ConsultarDisponibilidadUseCaseTest {
                 .isInstanceOf(NotFoundException.class)
                 .extracting(error -> ((NotFoundException) error).codigo())
                 .isEqualTo("MEDICO_NO_ENCONTRADO");
+    }
+
+    @Test
+    void debeAceptarExactamenteNoventaDiasCalendario() {
+        LocalDate inicio = LocalDate.of(2026, 6, 11);
+        LocalDate fin = inicio.plusDays(89);
+        when(citas.buscarFranjasOcupadas(eq(medicoId), any(Instant.class), any(Instant.class)))
+                .thenReturn(Set.of());
+
+        var resultado = useCase.ejecutar(medicoId, inicio, fin);
+
+        assertThat(resultado).isNotEmpty();
+        verify(citas).buscarFranjasOcupadas(eq(medicoId), any(Instant.class), any(Instant.class));
+    }
+
+    @Test
+    void debeRechazarNoventaYUnDiasAntesDeConsultarPersistencia() {
+        LocalDate inicio = LocalDate.of(2026, 6, 11);
+
+        assertThatThrownBy(() -> useCase.ejecutar(medicoId, inicio, inicio.plusDays(90)))
+                .isInstanceOf(ValidationException.class)
+                .extracting(error -> ((ValidationException) error).codigo())
+                .isEqualTo("RANGO_DEMASIADO_AMPLIO");
+
+        verify(medicos, never()).buscarPorId(medicoId);
+        verify(citas, never()).buscarFranjasOcupadas(
+                eq(medicoId), any(Instant.class), any(Instant.class));
     }
 }

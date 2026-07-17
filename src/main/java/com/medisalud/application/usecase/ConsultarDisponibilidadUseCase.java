@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -25,21 +26,29 @@ public final class ConsultarDisponibilidadUseCase {
     private final PoliticaHorarioAtencion politicaHorario;
     private final Clock reloj;
     private final ZoneId zonaHoraria;
+    private final int maximoDiasDisponibilidad;
 
     public ConsultarDisponibilidadUseCase(MedicoRepositoryPort medicos, CitaRepositoryPort citas,
                                           PoliticaHorarioAtencion politicaHorario, Clock reloj,
-                                          ZoneId zonaHoraria) {
+                                          ZoneId zonaHoraria, int maximoDiasDisponibilidad) {
         this.medicos = medicos;
         this.citas = citas;
         this.politicaHorario = politicaHorario;
         this.reloj = reloj;
         this.zonaHoraria = zonaHoraria;
+        this.maximoDiasDisponibilidad = maximoDiasDisponibilidad;
     }
 
     public List<FranjaDisponibleDto> ejecutar(UUID medicoId, LocalDate fechaInicio, LocalDate fechaFin) {
         if (fechaInicio == null || fechaFin == null || fechaInicio.isAfter(fechaFin)) {
             throw new ValidationException("RANGO_FECHAS_INVALIDO",
                     "fechaInicio y fechaFin son obligatorias y deben formar un rango valido");
+        }
+        long diasSolicitados = ChronoUnit.DAYS.between(fechaInicio, fechaFin) + 1;
+        if (diasSolicitados > maximoDiasDisponibilidad) {
+            throw new ValidationException("RANGO_DEMASIADO_AMPLIO",
+                    "El rango de disponibilidad no puede superar "
+                            + maximoDiasDisponibilidad + " dias calendario");
         }
         medicos.buscarPorId(medicoId)
                 .orElseThrow(() -> new NotFoundException("MEDICO_NO_ENCONTRADO", "El medico no existe"));

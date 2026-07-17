@@ -108,8 +108,8 @@ class CitaControllerIntegrationTest {
 
         mockMvc.perform(get("/api/v1/citas").param("pacienteId", primerPaciente.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(primeraCitaId.toString()))
-                .andExpect(jsonPath("$[0].estado").value("PROGRAMADA"));
+                .andExpect(jsonPath("$.contenido[0].id").value(primeraCitaId.toString()))
+                .andExpect(jsonPath("$.contenido[0].estado").value("PROGRAMADA"));
     }
 
     @Test
@@ -158,9 +158,9 @@ class CitaControllerIntegrationTest {
                         .param("fechaInicio", nuevaFecha.minusMinutes(1).toString())
                         .param("fechaFin", nuevaFecha.plusMinutes(1).toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(nuevaCitaId.toString()))
-                .andExpect(jsonPath("$[0].estado").value("PROGRAMADA"));
+                .andExpect(jsonPath("$.contenido.length()").value(1))
+                .andExpect(jsonPath("$.contenido[0].id").value(nuevaCitaId.toString()))
+                .andExpect(jsonPath("$.contenido[0].estado").value("PROGRAMADA"));
 
         mockMvc.perform(get("/api/v1/citas")
                         .param("medicoId", TERCER_MEDICO_ID.toString())
@@ -169,9 +169,9 @@ class CitaControllerIntegrationTest {
                         .param("fechaInicio", fechaOriginal.toString())
                         .param("fechaFin", fechaOriginal.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(citaOriginalId.toString()))
-                .andExpect(jsonPath("$[0].estado").value("CANCELADA"));
+                .andExpect(jsonPath("$.contenido.length()").value(1))
+                .andExpect(jsonPath("$.contenido[0].id").value(citaOriginalId.toString()))
+                .andExpect(jsonPath("$.contenido[0].estado").value("CANCELADA"));
     }
 
     @Test
@@ -188,6 +188,59 @@ class CitaControllerIntegrationTest {
                 .andExpect(jsonPath("$.cantidadFranjasDisponibles").value(0))
                 .andExpect(jsonPath("$.franjasDisponibles").isArray())
                 .andExpect(jsonPath("$.franjasDisponibles").isEmpty());
+    }
+
+    @Test
+    void debePaginarCitasConOrdenEstableYMetadatos() throws Exception {
+        UUID pacienteId = registrarPaciente();
+        OffsetDateTime primeraFranja = siguienteDiaLaboral(40).toOffsetDateTime();
+        UUID primeraCita = reservar(pacienteId, MEDICO_ID, primeraFranja);
+        UUID segundaCita = reservar(pacienteId, MEDICO_ID, primeraFranja.plusMinutes(30));
+
+        mockMvc.perform(get("/api/v1/citas")
+                        .param("pacienteId", pacienteId.toString())
+                        .param("page", "0")
+                        .param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contenido.length()").value(1))
+                .andExpect(jsonPath("$.contenido[0].id").value(primeraCita.toString()))
+                .andExpect(jsonPath("$.pagina").value(0))
+                .andExpect(jsonPath("$.tamanio").value(1))
+                .andExpect(jsonPath("$.totalElementos").value(2))
+                .andExpect(jsonPath("$.totalPaginas").value(2))
+                .andExpect(jsonPath("$.primera").value(true))
+                .andExpect(jsonPath("$.ultima").value(false));
+
+        mockMvc.perform(get("/api/v1/citas")
+                        .param("pacienteId", pacienteId.toString())
+                        .param("page", "1")
+                        .param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contenido[0].id").value(segundaCita.toString()))
+                .andExpect(jsonPath("$.primera").value(false))
+                .andExpect(jsonPath("$.ultima").value(true));
+    }
+
+    @Test
+    void debeRechazarLimitesInvalidosDePaginacion() throws Exception {
+        mockMvc.perform(get("/api/v1/citas").param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("PAGINA_INVALIDA"));
+
+        mockMvc.perform(get("/api/v1/citas").param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("TAMANIO_PAGINA_INVALIDO"));
+    }
+
+    @Test
+    void debeRechazarDisponibilidadMayorANoventaDias() throws Exception {
+        LocalDate inicio = LocalDate.now(ZONA).plusDays(1);
+
+        mockMvc.perform(get("/api/v1/medicos/{id}/disponibilidad", MEDICO_ID)
+                        .param("fechaInicio", inicio.toString())
+                        .param("fechaFin", inicio.plusDays(90).toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("RANGO_DEMASIADO_AMPLIO"));
     }
 
     private UUID reservar(UUID pacienteId, UUID medicoId, OffsetDateTime fechaHora) throws Exception {

@@ -5,6 +5,8 @@ import com.medisalud.domain.model.Cita;
 import com.medisalud.domain.model.EstadoCita;
 import com.medisalud.domain.model.FiltroCitas;
 import com.medisalud.domain.model.FranjaHoraria;
+import com.medisalud.domain.model.Pagina;
+import com.medisalud.domain.model.Paginacion;
 import com.medisalud.domain.port.CitaRepositoryPort;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,16 +38,23 @@ class ListarCitasUseCaseTest {
         Instant hasta = Instant.parse("2026-06-10T18:00:00Z");
         Cita cita = Cita.programar(pacienteId, medicoId,
                 new FranjaHoraria(Instant.parse("2026-06-10T14:00:00Z")));
-        when(citas.buscar(org.mockito.ArgumentMatchers.any(FiltroCitas.class))).thenReturn(List.of(cita));
+        when(citas.buscar(
+                org.mockito.ArgumentMatchers.any(FiltroCitas.class),
+                org.mockito.ArgumentMatchers.any(Paginacion.class)))
+                .thenReturn(new Pagina<>(List.of(cita), 2, 10, 21, 3));
 
-        var resultado = new ListarCitasUseCase(citas)
-                .ejecutar(medicoId, pacienteId, EstadoCita.PROGRAMADA, desde, hasta);
+        var resultado = new ListarCitasUseCase(citas, 100)
+                .ejecutar(medicoId, pacienteId, EstadoCita.PROGRAMADA, desde, hasta, 2, 10);
 
         ArgumentCaptor<FiltroCitas> filtro = ArgumentCaptor.forClass(FiltroCitas.class);
-        verify(citas).buscar(filtro.capture());
+        ArgumentCaptor<Paginacion> paginacion = ArgumentCaptor.forClass(Paginacion.class);
+        verify(citas).buscar(filtro.capture(), paginacion.capture());
         assertThat(filtro.getValue()).isEqualTo(
                 new FiltroCitas(medicoId, pacienteId, EstadoCita.PROGRAMADA, desde, hasta));
-        assertThat(resultado).singleElement().satisfies(dto -> {
+        assertThat(paginacion.getValue()).isEqualTo(new Paginacion(2, 10));
+        assertThat(resultado.pagina()).isEqualTo(2);
+        assertThat(resultado.totalElementos()).isEqualTo(21);
+        assertThat(resultado.contenido()).singleElement().satisfies(dto -> {
             assertThat(dto.id()).isEqualTo(cita.id());
             assertThat(dto.fechaHoraFin()).isEqualTo(cita.franja().fin());
         });
@@ -54,14 +63,20 @@ class ListarCitasUseCaseTest {
     @Test
     void debePermitirLimitesParciales() {
         Instant desde = Instant.parse("2026-06-10T13:00:00Z");
-        when(citas.buscar(org.mockito.ArgumentMatchers.any(FiltroCitas.class))).thenReturn(List.of());
+        when(citas.buscar(
+                org.mockito.ArgumentMatchers.any(FiltroCitas.class),
+                org.mockito.ArgumentMatchers.any(Paginacion.class)))
+                .thenReturn(new Pagina<>(List.of(), 0, 20, 0, 0));
 
-        assertThat(new ListarCitasUseCase(citas).ejecutar(null, null, null, desde, null)).isEmpty();
+        assertThat(new ListarCitasUseCase(citas, 100)
+                .ejecutar(null, null, null, desde, null, 0, null).contenido()).isEmpty();
 
         ArgumentCaptor<FiltroCitas> filtro = ArgumentCaptor.forClass(FiltroCitas.class);
-        verify(citas).buscar(filtro.capture());
+        ArgumentCaptor<Paginacion> paginacion = ArgumentCaptor.forClass(Paginacion.class);
+        verify(citas).buscar(filtro.capture(), paginacion.capture());
         assertThat(filtro.getValue().fechaInicio()).isEqualTo(desde);
         assertThat(filtro.getValue().fechaFin()).isNull();
+        assertThat(paginacion.getValue()).isEqualTo(new Paginacion(0, 20));
     }
 
     @Test
@@ -70,11 +85,60 @@ class ListarCitasUseCaseTest {
         Instant hasta = Instant.parse("2026-06-10T13:00:00Z");
 
         assertThatThrownBy(() ->
-                new ListarCitasUseCase(citas).ejecutar(null, null, null, desde, hasta))
+                new ListarCitasUseCase(citas, 100)
+                        .ejecutar(null, null, null, desde, hasta, 0, 20))
                 .isInstanceOf(ValidationException.class)
                 .extracting(error -> ((ValidationException) error).codigo())
                 .isEqualTo("RANGO_FECHAS_INVALIDO");
 
-        verify(citas, never()).buscar(org.mockito.ArgumentMatchers.any(FiltroCitas.class));
+        verify(citas, never()).buscar(
+                org.mockito.ArgumentMatchers.any(FiltroCitas.class),
+                org.mockito.ArgumentMatchers.any(Paginacion.class));
+    }
+
+    @Test
+    void debeRechazarPaginaNegativaAntesDeConsultarPersistencia() {
+        assertThatThrownBy(() -> new ListarCitasUseCase(citas, 100)
+                .ejecutar(null, null, null, null, null, -1, 20))
+                .isInstanceOf(ValidationException.class)
+                .extracting(error -> ((ValidationException) error).codigo())
+                .isEqualTo("PAGINA_INVALIDA");
+
+        verify(citas, never()).buscar(
+                org.mockito.ArgumentMatchers.any(FiltroCitas.class),
+                org.mockito.ArgumentMatchers.any(Paginacion.class));
+    }
+
+    @Test
+    void debeRechazarTamanioFueraDelLimiteConfigurable() {
+        ListarCitasUseCase useCase = new ListarCitasUseCase(citas, 50);
+
+        assertThatThrownBy(() -> useCase.ejecutar(null, null, null, null, null, 0, 0))
+                .isInstanceOf(ValidationException.class)
+                .extracting(error -> ((ValidationException) error).codigo())
+                .isEqualTo("TAMANIO_PAGINA_INVALIDO");
+        assertThatThrownBy(() -> useCase.ejecutar(null, null, null, null, null, 0, 51))
+                .isInstanceOf(ValidationException.class)
+                .extracting(error -> ((ValidationException) error).codigo())
+                .isEqualTo("TAMANIO_PAGINA_INVALIDO");
+
+        verify(citas, never()).buscar(
+                org.mockito.ArgumentMatchers.any(FiltroCitas.class),
+                org.mockito.ArgumentMatchers.any(Paginacion.class));
+    }
+
+    @Test
+    void debeAdaptarElTamanioPredeterminadoAUnMaximoMenor() {
+        when(citas.buscar(
+                org.mockito.ArgumentMatchers.any(FiltroCitas.class),
+                org.mockito.ArgumentMatchers.any(Paginacion.class)))
+                .thenReturn(new Pagina<>(List.of(), 0, 10, 0, 0));
+
+        new ListarCitasUseCase(citas, 10)
+                .ejecutar(null, null, null, null, null, 0, null);
+
+        verify(citas).buscar(
+                org.mockito.ArgumentMatchers.any(FiltroCitas.class),
+                org.mockito.ArgumentMatchers.eq(new Paginacion(0, 10)));
     }
 }

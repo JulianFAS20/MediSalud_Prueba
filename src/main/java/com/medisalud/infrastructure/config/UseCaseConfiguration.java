@@ -117,12 +117,15 @@ public class UseCaseConfiguration {
             CitaRepositoryPort citas,
             PoliticaHorarioAtencion politicaHorario,
             Clock reloj,
-            ZoneId zonaHoraria) {
-        return new ConsultarDisponibilidadUseCase(medicos, citas, politicaHorario, reloj, zonaHoraria);
+            ZoneId zonaHoraria,
+            MedisaludProperties properties) {
+        return new ConsultarDisponibilidadUseCase(
+                medicos, citas, politicaHorario, reloj, zonaHoraria,
+                properties.getMaximoDiasDisponibilidad());
     }
 
     @Bean
-    ListarCitasUseCase listarCitas(CitaRepositoryPort citas) {
-        return new ListarCitasUseCase(citas);
+    ListarCitasUseCase listarCitas(CitaRepositoryPort citas, MedisaludProperties properties) {
+        return new ListarCitasUseCase(citas, properties.getMaximoTamanioPaginaCitas());
     }
 }
