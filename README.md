@@ -37,6 +37,7 @@ incorporar correcciones de seguridad publicadas después del BOM de esa versión
 | `local` | Desarrollo y evaluación rápida; es el perfil predeterminado | Hora real | H2 en memoria |
 | `postgres` | Ejecución contra PostgreSQL | Hora real | PostgreSQL |
 | `local,rn05` | Prueba manual determinista de penalizaciones | Fijo: 2030-01-16 10:20, Bogotá | H2 en memoria |
+| `demo` | Demostración pública en Render; consola H2 deshabilitada | Hora real | H2 en memoria |
 
 ### Ejecutar localmente con H2
 
@@ -120,15 +121,19 @@ mvn spring-boot:run
 Para construir y ejecutar API y PostgreSQL como contenedores:
 
 ```bash
-mvn clean package
+mvn clean verify
 docker compose --profile app up --build
 ```
+
+El `Dockerfile` es multietapa y construye el JAR dentro de una imagen Maven fijada por digest; por tanto,
+no depende de un directorio `target` local. La ejecución previa de `mvn clean verify` permite comprobar
+la suite antes de levantar el entorno.
 
 `.env` está excluido del repositorio. Compose construye internamente `DB_URL` y se detiene antes de crear
 contenedores cuando `DB_USERNAME` o `DB_PASSWORD` faltan o están vacíos.
 
 La imagen de la API incorpora un `HEALTHCHECK` que consulta `/actuator/health` cada 10 segundos, concede
-30 segundos de arranque y marca el contenedor como no saludable después de cinco fallos consecutivos.
+60 segundos de arranque y marca el contenedor como no saludable después de cinco fallos consecutivos.
 Docker Compose hereda esta comprobación directamente del `Dockerfile`.
 
 ## Arquitectura
@@ -234,10 +239,11 @@ Los datos se insertan solo cuando la tabla de médicos está vacía.
 
 ## Colección Postman
 
-La raíz del proyecto incluye una colección de Postman con 63 escenarios agrupados en ocho carpetas:
+La raíz del proyecto incluye una colección de Postman con 71 escenarios agrupados en nueve carpetas:
 
 - [`MediSalud.postman_collection.json`](./MediSalud.postman_collection.json): colección principal.
 - [`MediSalud.RN05.postman_environment.json`](./MediSalud.RN05.postman_environment.json): ambiente auxiliar para ejecutar RN-05 con reloj fijo.
+- [`MediSalud.Public.postman_environment.json`](./MediSalud.Public.postman_environment.json): ambiente para probar la instancia pública de Render.
 
 La colección contiene los siete servicios públicos, captura automáticamente los UUID creados y
 genera documentos y fechas futuras para probar los flujos sin editar cada solicitud.
@@ -248,6 +254,12 @@ Para ejecutarla:
 2. Importar `MediSalud.postman_collection.json` en Postman.
 3. Ejecutar primero la carpeta `00 - Preparación` y continuar las carpetas en orden, o usar el Collection Runner.
 4. Para repetir toda la ejecución desde cero con el perfil local, reiniciar la API para limpiar la base H2 en memoria.
+
+Después del despliegue público, importar `MediSalud.Public.postman_environment.json`, completar
+`publicBaseUrl` con la URL HTTPS asignada por Render —sin `/` final— y seleccionar el ambiente
+`MediSalud - API pública`. La carpeta `08 - API pública en Render` ejecuta un smoke test independiente:
+healthcheck, contrato OpenAPI, registro de médico y paciente, disponibilidad, reserva, listado y cancelación.
+No modifica `baseUrl`, por lo que los flujos locales y públicos pueden convivir en la misma colección.
 
 Si el archivo de la colección cambia, debe importarse nuevamente; Postman no sincroniza automáticamente
 los cambios realizados en el JSON local.
@@ -542,7 +554,7 @@ Al cancelar una cita PROGRAMADA:
 
 ## Pruebas
 
-La suite contiene 123 pruebas automatizadas cuando Docker está disponible. Para ejecutarlas:
+La suite contiene 124 pruebas automatizadas cuando Docker está disponible. Para ejecutarlas:
 
 ```bash
 mvn test
@@ -592,6 +604,7 @@ La suite incluye:
 - Generación real del contrato OpenAPI, Swagger UI, ejemplos de error y ausencia de DTOs de aplicación en los schemas REST públicos.
 - Registro REST positivo de médicos, incluyendo `201`, UUID generado, `application/json` y campos exactos de `MedicoResponse`.
 - Salud operativa `UP`, ocultamiento de detalles y rechazo de endpoints Actuator no expuestos.
+- Perfil público `demo`: healthcheck disponible y consola administrativa H2 no expuesta.
 - Calendario colombiano, incluyendo Ley Emiliani, Pascua y el festivo creado en 2026.
 - Restricciones de arquitectura hexagonal con ArchUnit.
 - GitHub Actions ejecuta `mvn verify`, PostgreSQL Testcontainers y la barrera JaCoCo en cada push a `main` y pull request; el HTML de cobertura queda disponible como artefacto de la ejecución.
@@ -604,24 +617,61 @@ La suite incluye:
 - Mensajes 500 sin trazas ni detalles internos.
 - Restricciones de integridad, llaves foráneas, optimistic locking e índices por médico/paciente/fecha.
 - open-in-view deshabilitado.
-- `.dockerignore` usa una lista permitida y solo envía el Dockerfile y el JAR al contexto de construcción.
-- Temurin está fijado a Java `21.0.9+10` y digest SHA-256; PostgreSQL de Compose y Testcontainers también usa digest inmutable.
+- `.dockerignore` usa una lista permitida y solo envía `Dockerfile`, `pom.xml` y `src` al contexto de construcción; excluye metadatos, secretos y artefactos locales.
+- Las imágenes de Maven y Temurin están fijadas por versión y digest SHA-256; PostgreSQL de Compose y Testcontainers también usa digest inmutable.
 - La API se ejecuta como UID/GID `10001`, con filesystem de solo lectura, `/tmp` efímero, sin capabilities y con `no-new-privileges`.
 - El contenedor informa su estado mediante un healthcheck HTTP real contra `/actuator/health`.
 - El perfil PostgreSQL no inicia sin `DB_URL`, `DB_USERNAME` y `DB_PASSWORD`; `.env` y archivos de secretos están ignorados por Git.
 - Dependabot revisa semanalmente Maven, Dockerfile, Docker Compose y GitHub Actions.
-- Dependency Review analiza cada pull request y bloquea dependencias nuevas con vulnerabilidades `high` o `critical`.
+- Dependency Review v5 se ejecuta con Node 24, analiza cada pull request y bloquea dependencias nuevas con vulnerabilidades `high` o `critical`.
 - No se implementa autenticación/autorización porque fue excluida explícitamente del alcance.
 
 La automatización sigue la configuración recomendada por la
 [documentación oficial de Dependency Review](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/configure-dependency-review-action)
 y las [actualizaciones de versión de Dependabot](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-version-updates).
 
-## Evolución y despliegue
+### Activación inicial de Dependency Review
 
-La entrega no depende de una URL pública en nube. El `Dockerfile` usa una imagen JRE 21 inmutable y sin
-root, y Compose ofrece PostgreSQL; el mismo artefacto puede publicarse posteriormente en Azure Container Apps,
-AWS App Runner, Google Cloud Run, Render o Railway. Para producción se recomienda además:
+GitHub requiere que **Dependency graph** esté habilitado en el repositorio antes de ejecutar Dependency
+Review. Es una configuración única del repositorio que no puede activarse desde el workflow:
+
+1. Abrir [Settings > Security > Advanced Security](https://github.com/JulianFAS20/MediSalud_Prueba/settings/security_analysis).
+2. Habilitar **Dependency graph**.
+3. Volver a ejecutar los jobs fallidos de las pull requests de Dependabot.
+
+No se debe definir `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION`: el workflow ya usa
+`actions/dependency-review-action@v5`, compatible con Node 24.
+
+## Despliegue público en Render
+
+El archivo `render.yaml` define un servicio web Docker gratuito, healthcheck en `/actuator/health`, perfil
+`demo` y despliegue automático de `main` únicamente cuando los checks de GitHub terminan correctamente.
+Render construye la imagen directamente desde el repositorio, por lo que no se almacenan credenciales de
+nube en GitHub Actions y no hace falta un workflow adicional de despliegue.
+
+Para publicarlo:
+
+1. Subir estos cambios a la rama `main` del repositorio público.
+2. En Render, seleccionar **New > Blueprint**, conectar GitHub y elegir `MediSalud_Prueba`.
+3. Revisar el servicio `medisalud-api-julianfas20` detectado desde `render.yaml` y aplicar el Blueprint.
+4. Esperar a que finalice la construcción y comprobar `/actuator/health`, `/swagger-ui.html` y `/v3/api-docs` en la URL asignada.
+5. Usar esa URL como variable `baseUrl` en la colección Postman.
+
+Si el nombre configurado está disponible, la URL esperada es
+`https://medisalud-api-julianfas20.onrender.com`; la URL definitiva siempre será la que muestre Render al
+crear el servicio.
+
+El plan gratuito suspende el servicio después de 15 minutos sin tráfico, de modo que la primera petición
+puede tardar cerca de un minuto. El perfil `demo` usa H2 en memoria: los datos creados durante la prueba se
+reinician al suspenderse o desplegarse el servicio y la consola H2 permanece deshabilitada. Esta configuración
+es deliberada para una demostración pública sin secretos; un entorno productivo debe utilizar el perfil
+`postgres` con PostgreSQL administrado y credenciales gestionadas por la plataforma.
+
+## Evolución
+
+El `Dockerfile` usa imágenes inmutables y un usuario sin privilegios, por lo que el mismo artefacto puede
+migrarse posteriormente a Azure Container Apps, AWS App Runner, Google Cloud Run o Railway. Para producción
+se recomienda además:
 
 - proveedor administrado de PostgreSQL y secretos en el gestor de la nube;
 - autenticación OIDC/JWT y autorización por rol;

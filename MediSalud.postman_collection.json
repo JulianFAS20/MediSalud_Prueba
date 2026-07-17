@@ -91,6 +91,7 @@
           "  pm.collectionVariables.set(\"slotCancel\", workDate + \"T10:00:00-05:00\");",
           "  pm.collectionVariables.set(\"slotValidation\", workDate + \"T11:00:00-05:00\");",
           "  pm.collectionVariables.set(\"slotPenaltyBlocked\", workDate + \"T11:30:00-05:00\");",
+          "  pm.collectionVariables.set(\"slotPublic\", workDate + \"T16:00:00-05:00\");",
           "  pm.collectionVariables.set(\"slotMisaligned\", workDate + \"T08:15:00-05:00\");",
           "  pm.collectionVariables.set(\"slotOutsideHours\", workDate + \"T07:30:00-05:00\");",
           "  pm.collectionVariables.set(\"slotSunday\", sundayDate + \"T08:00:00-05:00\");",
@@ -2963,6 +2964,320 @@
                   "  pm.expect(body.codigo).to.eql(\"PACIENTE_BLOQUEADO\");",
                   "  pm.expect(body).to.have.property(\"mensaje\");",
                   "  pm.expect(body).to.have.property(\"path\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 - API pública en Render",
+      "description": "Smoke test integral de la instancia pública. Importe y seleccione el ambiente 'MediSalud - API pública', configure publicBaseUrl con la URL asignada por Render y ejecute las solicitudes en orden.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const publicBaseUrl = String(pm.environment.get(\"publicBaseUrl\") || \"\").trim();",
+              "if (!publicBaseUrl) {",
+              "  throw new Error(\"API_PUBLICA_NO_CONFIGURADA: seleccione el ambiente 'MediSalud - API pública' y defina publicBaseUrl con la URL HTTPS entregada por Render.\");",
+              "}",
+              "if (!/^https:\\/\\/[^\\s/]+(?:\\/.*)?$/.test(publicBaseUrl)) {",
+              "  throw new Error(\"API_PUBLICA_INVALIDA: publicBaseUrl debe ser una URL HTTPS válida, por ejemplo https://medisalud-api-julianfas20.onrender.com\");",
+              "}",
+              "if (publicBaseUrl.endsWith(\"/\")) {",
+              "  throw new Error(\"API_PUBLICA_INVALIDA: publicBaseUrl no debe terminar en '/'.\");",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "0. Inicializar y comprobar API pública",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{publicBaseUrl}}/actuator/health",
+            "description": "Inicializa un flujo público independiente y verifica el healthcheck. En el plan gratuito de Render la primera respuesta puede tardar mientras despierta el servicio."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const publicRunId = Date.now().toString() + \"-\" + Math.floor(Math.random() * 1000000);",
+                  "pm.collectionVariables.set(\"publicRunId\", publicRunId);",
+                  "[\"publicMedicoId\", \"publicPacienteId\", \"publicCitaId\"].forEach(key => pm.collectionVariables.unset(key));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"API pública disponible\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.eql(\"UP\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1. Consultar contrato OpenAPI público",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{publicBaseUrl}}/v3/api-docs",
+            "description": "Comprueba que la documentación OpenAPI de la instancia pública está disponible."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Contrato OpenAPI publicado\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.openapi).to.match(/^3\\./);",
+                  "  pm.expect(body.paths).to.have.property(\"/api/v1/citas\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Registrar médico en API pública",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{publicBaseUrl}}/api/v1/medicos",
+            "description": "Registra un médico exclusivo para evitar conflictos si el flujo público se ejecuta varias veces.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombreCompleto\": \"Dra. Demo Publica\",\n  \"especialidad\": \"Medicina General\",\n  \"telefono\": \"3005550101\",\n  \"email\": \"medico.{{publicRunId}}@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Médico público registrado\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.collectionVariables.set(\"publicMedicoId\", body.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Registrar paciente en API pública",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{publicBaseUrl}}/api/v1/pacientes",
+            "description": "Registra un paciente con documento único y conserva su UUID para las solicitudes siguientes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombreCompleto\": \"Paciente Demo Publica\",\n  \"documentoIdentidad\": \"PUB-{{publicRunId}}\",\n  \"telefono\": \"3005550102\",\n  \"email\": \"paciente.{{publicRunId}}@example.com\",\n  \"fechaNacimiento\": \"1990-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Paciente público registrado\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.documentoIdentidad).to.eql(\"PUB-\" + pm.collectionVariables.get(\"publicRunId\"));",
+                  "  pm.collectionVariables.set(\"publicPacienteId\", body.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Consultar disponibilidad en API pública",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{publicBaseUrl}}/api/v1/medicos/{{publicMedicoId}}/disponibilidad?fechaInicio={{workDate}}&fechaFin={{workDate}}",
+            "description": "Consulta las franjas de un médico recién creado en un día laboral futuro."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Disponibilidad pública consistente\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.cantidadFranjasDisponibles).to.eql(body.franjasDisponibles.length);",
+                  "  pm.expect(body.cantidadFranjasDisponibles).to.eql(20);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Reservar cita en API pública",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{publicBaseUrl}}/api/v1/citas",
+            "description": "Reserva una cita futura usando los UUID capturados en este mismo flujo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pacienteId\": \"{{publicPacienteId}}\",\n  \"medicoId\": \"{{publicMedicoId}}\",\n  \"fechaHora\": \"{{slotPublic}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Cita pública programada\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.estado).to.eql(\"PROGRAMADA\");",
+                  "  pm.collectionVariables.set(\"publicCitaId\", body.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Listar cita creada en API pública",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{publicBaseUrl}}/api/v1/citas?pacienteId={{publicPacienteId}}&estado=PROGRAMADA&page=0&size=20",
+            "description": "Valida el filtro paginado por paciente y estado contra la instancia pública."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Listado público contiene la cita\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.totalElementos).to.eql(1);",
+                  "  pm.expect(body.contenido[0].id).to.eql(pm.collectionVariables.get(\"publicCitaId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Cancelar cita en API pública",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{publicBaseUrl}}/api/v1/citas/{{publicCitaId}}/cancelacion",
+            "description": "Cierra el smoke test comprobando el flujo público de cancelación."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Cita pública cancelada\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get(\"publicCitaId\"));",
+                  "  pm.expect(body.estado).to.eql(\"CANCELADA\");",
                   "});"
                 ]
               }

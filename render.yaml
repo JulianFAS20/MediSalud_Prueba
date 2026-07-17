@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: medisalud-api-julianfas20
+    runtime: docker
+    plan: free
+    region: virginia
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: demo
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC
