@@ -5,6 +5,7 @@ import com.medisalud.domain.model.FranjaHoraria;
 import com.medisalud.domain.model.Medico;
 import com.medisalud.domain.model.Paciente;
 import com.medisalud.domain.port.CalendarioFestivosPort;
+import com.medisalud.domain.service.PoliticaHorarioAtencion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -31,7 +32,7 @@ class HorarioLaboralReservaValidatorTest {
     @ParameterizedTest(name = "acepta {0}")
     @MethodSource("franjasValidas")
     void debeAceptarLosLimitesIncluidosDelHorario(String descripcion, Instant inicio) {
-        HorarioLaboralReservaValidator validator = new HorarioLaboralReservaValidator(fecha -> false);
+        HorarioLaboralReservaValidator validator = validator(fecha -> false);
 
         assertThatCode(() -> validator.validar(contexto(inicio, AHORA)))
                 .doesNotThrowAnyException();
@@ -40,7 +41,7 @@ class HorarioLaboralReservaValidatorTest {
     @ParameterizedTest(name = "rechaza {0} con {2}")
     @MethodSource("franjasInvalidas")
     void debeRechazarFranjasInvalidas(String descripcion, Instant inicio, String codigo) {
-        HorarioLaboralReservaValidator validator = new HorarioLaboralReservaValidator(fecha -> false);
+        HorarioLaboralReservaValidator validator = validator(fecha -> false);
 
         assertThatThrownBy(() -> validator.validar(contexto(inicio, AHORA)))
                 .isInstanceOf(ValidationException.class)
@@ -52,7 +53,7 @@ class HorarioLaboralReservaValidatorTest {
     void debeRechazarUnFestivoAunqueSeaDiaDeSemana() {
         LocalDate festivo = LocalDate.of(2026, 6, 10);
         CalendarioFestivosPort calendario = festivo::equals;
-        HorarioLaboralReservaValidator validator = new HorarioLaboralReservaValidator(calendario);
+        HorarioLaboralReservaValidator validator = validator(calendario);
 
         assertThatThrownBy(() -> validator.validar(contexto(local(2026, 6, 10, 8, 0), AHORA)))
                 .isInstanceOf(ValidationException.class)
@@ -62,7 +63,7 @@ class HorarioLaboralReservaValidatorTest {
 
     @Test
     void debeRechazarUnaCitaEnElInstanteActual() {
-        HorarioLaboralReservaValidator validator = new HorarioLaboralReservaValidator(fecha -> false);
+        HorarioLaboralReservaValidator validator = validator(fecha -> false);
         Instant ahoraLaboral = local(2026, 6, 10, 8, 0);
 
         assertThatThrownBy(() -> validator.validar(contexto(ahoraLaboral, ahoraLaboral)))
@@ -91,6 +92,10 @@ class HorarioLaboralReservaValidatorTest {
 
     private static ReservaValidationContext contexto(Instant inicio, Instant ahora) {
         return new ReservaValidationContext(PACIENTE, MEDICO, new FranjaHoraria(inicio), ahora, ZONA);
+    }
+
+    private static HorarioLaboralReservaValidator validator(CalendarioFestivosPort calendario) {
+        return new HorarioLaboralReservaValidator(new PoliticaHorarioAtencion(calendario));
     }
 
     private static Instant local(int anio, int mes, int dia, int hora, int minuto) {

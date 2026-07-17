@@ -1,22 +1,19 @@
 package com.medisalud.application.validation;
 
 import com.medisalud.domain.exception.ValidationException;
-import com.medisalud.domain.port.CalendarioFestivosPort;
+import com.medisalud.domain.model.FranjaHoraria;
+import com.medisalud.domain.model.JornadaAtencion;
+import com.medisalud.domain.service.PoliticaHorarioAtencion;
 
-import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 
 public final class HorarioLaboralReservaValidator implements ReservaValidator {
 
-    private static final LocalTime APERTURA = LocalTime.of(8, 0);
-    private static final LocalTime CIERRE_SEMANA = LocalTime.of(18, 0);
-    private static final LocalTime CIERRE_SABADO = LocalTime.of(13, 0);
+    private final PoliticaHorarioAtencion politicaHorario;
 
-    private final CalendarioFestivosPort calendarioFestivos;
-
-    public HorarioLaboralReservaValidator(CalendarioFestivosPort calendarioFestivos) {
-        this.calendarioFestivos = calendarioFestivos;
+    public HorarioLaboralReservaValidator(PoliticaHorarioAtencion politicaHorario) {
+        this.politicaHorario = politicaHorario;
     }
 
     @Override
@@ -27,19 +24,16 @@ public final class HorarioLaboralReservaValidator implements ReservaValidator {
 
         ZonedDateTime inicio = contexto.franja().inicio().atZone(contexto.zonaHoraria());
         LocalTime hora = inicio.toLocalTime();
-        if (hora.getSecond() != 0 || hora.getNano() != 0 || (hora.getMinute() != 0 && hora.getMinute() != 30)) {
+        if (!politicaHorario.esInicioAlineado(hora)) {
             throw new ValidationException("FRANJA_INVALIDA",
-                    "La cita debe iniciar en una franja exacta de 30 minutos");
+                    "La cita debe iniciar en una franja exacta de "
+                            + FranjaHoraria.DURACION.toMinutes() + " minutos");
         }
 
-        DayOfWeek dia = inicio.getDayOfWeek();
-        if (dia == DayOfWeek.SUNDAY || calendarioFestivos.esFestivo(inicio.toLocalDate())) {
-            throw new ValidationException("DIA_NO_LABORAL", "No hay atencion los domingos ni festivos");
-        }
-
-        LocalTime cierre = dia == DayOfWeek.SATURDAY ? CIERRE_SABADO : CIERRE_SEMANA;
-        LocalTime fin = hora.plusMinutes(30);
-        if (hora.isBefore(APERTURA) || fin.isAfter(cierre)) {
+        JornadaAtencion jornada = politicaHorario.jornadaPara(inicio.toLocalDate())
+                .orElseThrow(() -> new ValidationException(
+                        "DIA_NO_LABORAL", "No hay atencion los domingos ni festivos"));
+        if (!jornada.contiene(hora)) {
             throw new ValidationException("FUERA_DE_HORARIO",
                     "La franja esta fuera del horario laboral del medico");
         }

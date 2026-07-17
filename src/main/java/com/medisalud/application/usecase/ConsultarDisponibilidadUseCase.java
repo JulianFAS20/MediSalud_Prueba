@@ -3,12 +3,12 @@ package com.medisalud.application.usecase;
 import com.medisalud.application.dto.FranjaDisponibleDto;
 import com.medisalud.domain.exception.NotFoundException;
 import com.medisalud.domain.exception.ValidationException;
-import com.medisalud.domain.port.CalendarioFestivosPort;
+import com.medisalud.domain.model.FranjaHoraria;
 import com.medisalud.domain.port.CitaRepositoryPort;
 import com.medisalud.domain.port.MedicoRepositoryPort;
+import com.medisalud.domain.service.PoliticaHorarioAtencion;
 
 import java.time.Clock;
-import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -20,22 +20,18 @@ import java.util.UUID;
 
 public final class ConsultarDisponibilidadUseCase {
 
-    private static final LocalTime APERTURA = LocalTime.of(8, 0);
-    private static final LocalTime CIERRE_SEMANA = LocalTime.of(18, 0);
-    private static final LocalTime CIERRE_SABADO = LocalTime.of(13, 0);
-
     private final MedicoRepositoryPort medicos;
     private final CitaRepositoryPort citas;
-    private final CalendarioFestivosPort calendarioFestivos;
+    private final PoliticaHorarioAtencion politicaHorario;
     private final Clock reloj;
     private final ZoneId zonaHoraria;
 
     public ConsultarDisponibilidadUseCase(MedicoRepositoryPort medicos, CitaRepositoryPort citas,
-                                          CalendarioFestivosPort calendarioFestivos, Clock reloj,
+                                          PoliticaHorarioAtencion politicaHorario, Clock reloj,
                                           ZoneId zonaHoraria) {
         this.medicos = medicos;
         this.citas = citas;
-        this.calendarioFestivos = calendarioFestivos;
+        this.politicaHorario = politicaHorario;
         this.reloj = reloj;
         this.zonaHoraria = zonaHoraria;
     }
@@ -55,14 +51,11 @@ public final class ConsultarDisponibilidadUseCase {
         List<FranjaDisponibleDto> resultado = new ArrayList<>();
 
         for (LocalDate fecha = fechaInicio; !fecha.isAfter(fechaFin); fecha = fecha.plusDays(1)) {
-            if (fecha.getDayOfWeek() == DayOfWeek.SUNDAY || calendarioFestivos.esFestivo(fecha)) {
-                continue;
-            }
-            LocalTime cierre = fecha.getDayOfWeek() == DayOfWeek.SATURDAY ? CIERRE_SABADO : CIERRE_SEMANA;
-            for (LocalTime hora = APERTURA; hora.isBefore(cierre); hora = hora.plusMinutes(30)) {
+            for (LocalTime hora : politicaHorario.iniciosDeFranja(fecha)) {
                 Instant inicio = fecha.atTime(hora).atZone(zonaHoraria).toInstant();
                 if (inicio.isAfter(ahora) && !ocupadas.contains(inicio)) {
-                    resultado.add(new FranjaDisponibleDto(inicio, inicio.plusSeconds(30 * 60L)));
+                    FranjaHoraria franja = new FranjaHoraria(inicio);
+                    resultado.add(new FranjaDisponibleDto(franja.inicio(), franja.fin()));
                 }
             }
         }

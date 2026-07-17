@@ -100,7 +100,7 @@ Se utiliza Arquitectura Hexagonal con DDD ligero:
     com.medisalud
     ├── domain
     │   ├── model          Entidades, value objects y enums
-    │   ├── service        Strategy de penalización
+    │   ├── service        Strategy de penalización y política horaria
     │   ├── port           Puertos de repositorio y calendario
     │   └── exception      Excepciones libres de Spring
     ├── application
@@ -124,6 +124,7 @@ Esta arquitectura encaja bien porque las reglas de horarios, conflictos, penaliz
 ### Patrones y decisiones relevantes
 
 - Dominio rico: Cita controla la transición PROGRAMADA → CANCELADA; Paciente valida la fecha de nacimiento al reservar; FranjaHoraria garantiza una duración de 30 minutos.
+- Política horaria única: `PoliticaHorarioAtencion` define días laborables y jornadas; `JornadaAtencion` genera y valida franjas usando `FranjaHoraria.DURACION`. Disponibilidad y reserva consumen la misma regla.
 - Chain of Responsibility: las reglas de reserva son validadores SRP independientes. Agregar una nueva regla no modifica ReservarCitaUseCase.
 - Strategy: PenalizacionCancelacionStrategy aísla RN-05 del flujo de cancelación.
 - Unit of Work: cancelación + penalización + nueva reserva se ejecutan en una transacción. Una reprogramación fallida revierte todo.
@@ -477,7 +478,7 @@ Al cancelar una cita PROGRAMADA:
 
 ## Pruebas
 
-La suite contiene 87 pruebas automatizadas. Para ejecutarlas:
+La suite contiene 95 pruebas automatizadas. Para ejecutarlas:
 
 ```bash
 mvn test
@@ -490,7 +491,7 @@ La verificación completa genera el JAR, el reporte JaCoCo y comprueba los umbra
 mvn clean verify
 ```
 
-El reporte navegable queda en `target/site/jacoco/index.html`. La medición actual es 98,59 % de
+El reporte navegable queda en `target/site/jacoco/index.html`. La medición actual es 98,65 % de
 líneas y 90,13 % de ramas.
 
 La suite incluye:

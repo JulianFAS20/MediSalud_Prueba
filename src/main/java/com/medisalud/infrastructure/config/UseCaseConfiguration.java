@@ -20,6 +20,7 @@ import com.medisalud.domain.port.PacienteRepositoryPort;
 import com.medisalud.domain.port.PenalizacionRepositoryPort;
 import com.medisalud.domain.service.PenalizacionCancelacionStrategy;
 import com.medisalud.domain.service.PenalizacionCancelacionTardiaStrategy;
+import com.medisalud.domain.service.PoliticaHorarioAtencion;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -51,6 +52,11 @@ public class UseCaseConfiguration {
     }
 
     @Bean
+    PoliticaHorarioAtencion politicaHorarioAtencion(CalendarioFestivosPort calendarioFestivos) {
+        return new PoliticaHorarioAtencion(calendarioFestivos);
+    }
+
+    @Bean
     RegistrarMedicoUseCase registrarMedico(MedicoRepositoryPort medicos, TransaccionPort transacciones) {
         return new RegistrarMedicoUseCase(medicos, transacciones);
     }
@@ -66,7 +72,7 @@ public class UseCaseConfiguration {
             MedicoRepositoryPort medicos,
             CitaRepositoryPort citas,
             PenalizacionRepositoryPort penalizaciones,
-            CalendarioFestivosPort calendarioFestivos,
+            PoliticaHorarioAtencion politicaHorario,
             TransaccionPort transacciones,
             Clock reloj,
             ZoneId zonaHoraria) {
@@ -75,7 +81,7 @@ public class UseCaseConfiguration {
                 medicos,
                 citas,
                 List.of(
-                        new HorarioLaboralReservaValidator(calendarioFestivos),
+                        new HorarioLaboralReservaValidator(politicaHorario),
                         new FechaNacimientoPacienteValidator(),
                         new PenalizacionesActivasValidator(penalizaciones),
                         new DisponibilidadMedicoValidator(citas),
@@ -109,10 +115,10 @@ public class UseCaseConfiguration {
     ConsultarDisponibilidadUseCase consultarDisponibilidad(
             MedicoRepositoryPort medicos,
             CitaRepositoryPort citas,
-            CalendarioFestivosPort calendarioFestivos,
+            PoliticaHorarioAtencion politicaHorario,
             Clock reloj,
             ZoneId zonaHoraria) {
-        return new ConsultarDisponibilidadUseCase(medicos, citas, calendarioFestivos, reloj, zonaHoraria);
+        return new ConsultarDisponibilidadUseCase(medicos, citas, politicaHorario, reloj, zonaHoraria);
     }
 
     @Bean

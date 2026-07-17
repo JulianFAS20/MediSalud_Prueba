@@ -18,6 +18,7 @@ import com.medisalud.domain.port.CitaRepositoryPort;
 import com.medisalud.domain.port.MedicoRepositoryPort;
 import com.medisalud.domain.port.PacienteRepositoryPort;
 import com.medisalud.domain.port.PenalizacionRepositoryPort;
+import com.medisalud.domain.service.PoliticaHorarioAtencion;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -76,7 +77,7 @@ class ReservarCitaUseCaseTest {
                 medicos,
                 citas,
                 List.of(
-                        new HorarioLaboralReservaValidator(festivos),
+                        new HorarioLaboralReservaValidator(new PoliticaHorarioAtencion(festivos)),
                         new FechaNacimientoPacienteValidator(),
                         new PenalizacionesActivasValidator(penalizaciones),
                         new DisponibilidadMedicoValidator(citas),

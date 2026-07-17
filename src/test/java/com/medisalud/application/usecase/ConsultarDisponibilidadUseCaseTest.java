@@ -6,6 +6,7 @@ import com.medisalud.domain.exception.ValidationException;
 import com.medisalud.domain.port.CalendarioFestivosPort;
 import com.medisalud.domain.port.CitaRepositoryPort;
 import com.medisalud.domain.port.MedicoRepositoryPort;
+import com.medisalud.domain.service.PoliticaHorarioAtencion;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,7 +51,8 @@ class ConsultarDisponibilidadUseCaseTest {
         medicoId = medico.id();
         lenient().when(medicos.buscarPorId(medicoId)).thenReturn(Optional.of(medico));
         useCase = new ConsultarDisponibilidadUseCase(
-                medicos, citas, festivos, Clock.fixed(AHORA, ZoneOffset.UTC), ZONA);
+                medicos, citas, new PoliticaHorarioAtencion(festivos),
+                Clock.fixed(AHORA, ZoneOffset.UTC), ZONA);
     }
 
     @Test
@@ -98,7 +100,8 @@ class ConsultarDisponibilidadUseCaseTest {
         LocalDate miercoles = LocalDate.of(2026, 6, 10);
         Instant nueveLocal = miercoles.atTime(9, 0).atZone(ZONA).toInstant();
         var useCaseConHoraAvanzada = new ConsultarDisponibilidadUseCase(
-                medicos, citas, festivos, Clock.fixed(nueveLocal, ZoneOffset.UTC), ZONA);
+                medicos, citas, new PoliticaHorarioAtencion(festivos),
+                Clock.fixed(nueveLocal, ZoneOffset.UTC), ZONA);
         when(citas.buscarFranjasOcupadas(eq(medicoId), any(Instant.class), any(Instant.class)))
                 .thenReturn(Set.of());
 
