@@ -23,3 +23,11 @@ jobs:
           cache: maven
       - name: Verify
         run: mvn --batch-mode --no-transfer-progress verify
+      - name: Publish JaCoCo report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: jacoco-report-${{ github.run_number }}
+          path: target/site/jacoco/
+          if-no-files-found: warn
+          retention-days: 14

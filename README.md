@@ -22,7 +22,7 @@ incorporar correcciones de seguridad publicadas después del BOM de esa versión
 
 | Área | Tecnología |
 |---|---|
-| Lenguaje y framework | Java 21, Spring Boot 3.5.15, Spring Web MVC |
+| Lenguaje y framework | Java 21, Spring Boot 3.5.15, Spring Web MVC, OpenAPI 3.1 y Swagger UI |
 | Validación | Jakarta Bean Validation y validaciones de dominio |
 | Persistencia | Spring Data JPA, Hibernate, Flyway |
 | Bases de datos | H2 para ejecución local y PostgreSQL 17 para un entorno productivo simulado |
@@ -55,6 +55,15 @@ La API queda disponible en http://localhost:8080. La consola de H2 está en http
 - JDBC URL: jdbc:h2:mem:medisalud
 - Usuario: sa
 - Contraseña: vacía
+
+La documentación ejecutable se genera desde los controladores y modelos REST:
+
+- Swagger UI: http://localhost:8080/swagger-ui.html
+- Contrato OpenAPI JSON: http://localhost:8080/v3/api-docs
+
+Swagger UI incluye ejemplos de entrada, respuestas de éxito y el formato uniforme `ApiError` para los
+errores esperados. También permite ejecutar solicitudes contra la instancia local. La integración utiliza
+[springdoc-openapi 2.x](https://springdoc.org/), compatible con Spring Boot 3.
 
 H2 es volátil en este perfil: al detener la aplicación se eliminan médicos adicionales, pacientes, citas y
 penalizaciones. Los tres médicos semilla se vuelven a cargar en el siguiente arranque.
@@ -150,6 +159,7 @@ Esta arquitectura encaja bien porque las reglas de horarios, conflictos, penaliz
 - Unit of Work: cancelación + penalización + nueva reserva se ejecutan en una transacción. Una reprogramación fallida revierte todo.
 - Concurrencia: además de consultar disponibilidad, la base usa claves únicas anulables para la franja activa de médico y paciente. Dos solicitudes simultáneas no pueden confirmar la misma franja.
 - Paginación: el dominio define `Paginacion` y `Pagina<T>` sin depender de Spring; el adaptador JPA traduce el contrato a `PageRequest` con orden estable por fecha e ID.
+- Contratos REST: los controladores transforman los DTOs de aplicación a responses propios (`MedicoResponse`, `PacienteResponse`, `CitaResponse`), evitando que cambios internos alteren accidentalmente la API pública.
 - Persistencia: Flyway administra el esquema; Hibernate se limita a validarlo. Las mismas migraciones y adaptadores se verifican contra H2 y PostgreSQL real.
 - Identificadores: UUID evita acoplamiento a secuencias y facilita distribución futura.
 - Tiempo: la API exige ISO 8601 con offset, el dominio persiste Instant y las reglas laborales se evalúan en America/Bogota.
@@ -274,6 +284,9 @@ el perfil `rn05`, el sistema vuelve automáticamente a `Clock.systemUTC()` y uti
 La URL base local es `http://localhost:8080/api/v1`. Las fechas de disponibilidad usan `YYYY-MM-DD` y
 los instantes de citas/filtros deben incluir offset ISO 8601, por ejemplo `2027-02-01T08:00:00-05:00`.
 Las respuestas se expresan en la zona `America/Bogota`.
+
+El mismo contrato puede explorarse y ejecutarse en Swagger UI (`/swagger-ui.html`) o consumirse en
+formato OpenAPI 3.1 desde `/v3/api-docs`.
 
 Los ejemplos de esta sección suponen el perfil `local` con reloj real. No deben ejecutarse con el perfil
 `rn05`, cuyo reloj fijo está en 2030.
@@ -520,7 +533,7 @@ Al cancelar una cita PROGRAMADA:
 
 ## Pruebas
 
-La suite contiene 115 pruebas automatizadas cuando Docker está disponible. Para ejecutarlas:
+La suite contiene 120 pruebas automatizadas cuando Docker está disponible. Para ejecutarlas:
 
 ```bash
 mvn test
@@ -533,8 +546,12 @@ La verificación completa genera el JAR, el reporte JaCoCo y comprueba los umbra
 mvn clean verify
 ```
 
-El reporte navegable queda en `target/site/jacoco/index.html`. La medición actual es 98,75 % de
-líneas y 92,22 % de ramas.
+El reporte navegable queda en `target/site/jacoco/index.html`. En GitHub Actions también se publica como
+el artefacto descargable `jacoco-report-<numero-ejecucion>` durante 14 días, incluso si una ejecución
+posterior falla después de haber generado el reporte. Los artefactos se descargan desde la sección
+**Artifacts** de cada workflow run, según la [documentación de GitHub](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts).
+
+La medición actual es 98,78 % de líneas y 92,22 % de ramas.
 
 ### PostgreSQL real con Testcontainers
 
@@ -563,9 +580,10 @@ La suite incluye:
 - Concurrencia real con dos hilos sincronizados y una única reserva confirmada por la base de datos.
 - Disponibilidad acotada a 90 días y paginación con límites, metadatos y filtros combinados.
 - Contrato global de errores para dominio, Bean Validation, JSON, parámetros, persistencia, 404, 405, 415 y 500 seguros.
+- Generación real del contrato OpenAPI, Swagger UI, ejemplos de error y ausencia de DTOs de aplicación en los schemas REST públicos.
 - Calendario colombiano, incluyendo Ley Emiliani, Pascua y el festivo creado en 2026.
 - Restricciones de arquitectura hexagonal con ArchUnit.
-- GitHub Actions ejecuta `mvn verify`, PostgreSQL Testcontainers y la barrera JaCoCo en cada push a `main` y pull request.
+- GitHub Actions ejecuta `mvn verify`, PostgreSQL Testcontainers y la barrera JaCoCo en cada push a `main` y pull request; el HTML de cobertura queda disponible como artefacto de la ejecución.
 
 ## Seguridad y operación
 

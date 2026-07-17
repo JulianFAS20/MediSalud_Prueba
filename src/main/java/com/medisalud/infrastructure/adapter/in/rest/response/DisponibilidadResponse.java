@@ -1,13 +1,15 @@
 package com.medisalud.infrastructure.adapter.in.rest.response;
 
 import com.medisalud.application.dto.FranjaDisponibleDto;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
 
+@Schema(description = "Resumen de franjas disponibles para el rango consultado")
 public record DisponibilidadResponse(
-        int cantidadFranjasDisponibles,
+        @Schema(example = "2") int cantidadFranjasDisponibles,
         List<FranjaDisponibleResponse> franjasDisponibles) {
 
     public DisponibilidadResponse {

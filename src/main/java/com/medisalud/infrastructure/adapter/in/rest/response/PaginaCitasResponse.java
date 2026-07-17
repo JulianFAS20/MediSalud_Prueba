@@ -2,19 +2,21 @@ package com.medisalud.infrastructure.adapter.in.rest.response;
 
 import com.medisalud.application.dto.CitaDto;
 import com.medisalud.domain.model.Pagina;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
 
+@Schema(description = "Pagina de citas que coincide con los filtros")
 public record PaginaCitasResponse(
         List<CitaResponse> contenido,
-        int pagina,
-        int tamanio,
-        long totalElementos,
-        int totalPaginas,
-        boolean primera,
-        boolean ultima) {
+        @Schema(example = "0") int pagina,
+        @Schema(example = "20") int tamanio,
+        @Schema(example = "34") long totalElementos,
+        @Schema(example = "2") int totalPaginas,
+        @Schema(example = "true") boolean primera,
+        @Schema(example = "false") boolean ultima) {
 
     public PaginaCitasResponse {
         contenido = List.copyOf(Objects.requireNonNull(contenido, "El contenido es obligatorio"));

@@ -18,6 +18,17 @@ server:
     include-message: never
     include-stacktrace: never
 
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+
 medisalud:
   zona-horaria: America/Bogota
   festivos: []
