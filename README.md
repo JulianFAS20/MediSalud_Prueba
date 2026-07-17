@@ -10,7 +10,10 @@ El proyecto prioriza reglas de negocio explícitas, aislamiento del dominio, con
 
 - Java 21
 - Maven 3.9+
-- Docker y Docker Compose solamente si se desea usar PostgreSQL
+- Docker para ejecutar las pruebas PostgreSQL con Testcontainers; Docker Compose solo para levantar el entorno PostgreSQL manual
+
+Docker no es obligatorio para iniciar la API con H2. Si no está disponible, JUnit omite explícitamente
+la suite Testcontainers y conserva las pruebas unitarias e integración H2.
 
 El proyecto usa Spring Boot 3.5.15 y sobrescribe únicamente Tomcat a 10.1.57 para
 incorporar correcciones de seguridad publicadas después del BOM de esa versión.
@@ -23,7 +26,7 @@ incorporar correcciones de seguridad publicadas después del BOM de esa versión
 | Validación | Jakarta Bean Validation y validaciones de dominio |
 | Persistencia | Spring Data JPA, Hibernate, Flyway |
 | Bases de datos | H2 para ejecución local y PostgreSQL 17 para un entorno productivo simulado |
-| Calidad | JUnit 5, Mockito, AssertJ, MockMvc, ArchUnit y JaCoCo |
+| Calidad | JUnit 5, Mockito, AssertJ, MockMvc, Testcontainers, ArchUnit y JaCoCo |
 | Productividad | Lombok, Maven y Postman |
 | Operación | Docker, Docker Compose y GitHub Actions |
 
@@ -130,7 +133,7 @@ Esta arquitectura encaja bien porque las reglas de horarios, conflictos, penaliz
 - Unit of Work: cancelación + penalización + nueva reserva se ejecutan en una transacción. Una reprogramación fallida revierte todo.
 - Concurrencia: además de consultar disponibilidad, la base usa claves únicas anulables para la franja activa de médico y paciente. Dos solicitudes simultáneas no pueden confirmar la misma franja.
 - Paginación: el dominio define `Paginacion` y `Pagina<T>` sin depender de Spring; el adaptador JPA traduce el contrato a `PageRequest` con orden estable por fecha e ID.
-- Persistencia: Flyway administra el esquema; Hibernate se limita a validarlo.
+- Persistencia: Flyway administra el esquema; Hibernate se limita a validarlo. Las mismas migraciones y adaptadores se verifican contra H2 y PostgreSQL real.
 - Identificadores: UUID evita acoplamiento a secuencias y facilita distribución futura.
 - Tiempo: la API exige ISO 8601 con offset, el dominio persiste Instant y las reglas laborales se evalúan en America/Bogota.
 
@@ -500,7 +503,7 @@ Al cancelar una cita PROGRAMADA:
 
 ## Pruebas
 
-La suite contiene 109 pruebas automatizadas. Para ejecutarlas:
+La suite contiene 115 pruebas automatizadas cuando Docker está disponible. Para ejecutarlas:
 
 ```bash
 mvn test
@@ -514,7 +517,22 @@ mvn clean verify
 ```
 
 El reporte navegable queda en `target/site/jacoco/index.html`. La medición actual es 98,75 % de
-líneas y 91,67 % de ramas.
+líneas y 92,22 % de ramas.
+
+### PostgreSQL real con Testcontainers
+
+`PostgreSqlPersistenceIntegrationTest` inicia `postgres:17-alpine` en un puerto aleatorio, aplica Flyway
+y destruye automáticamente el contenedor al finalizar. Para ejecutarla de forma aislada, Docker Engine
+debe estar iniciado:
+
+```bash
+mvn -Dtest=PostgreSqlPersistenceIntegrationTest test
+```
+
+La prueba valida el tipo físico `TIMESTAMP WITH TIME ZONE`, conservación de `Instant`, restricciones
+únicas, filtros combinados y paginados con Specifications, rollback de reprogramación y una carrera real
+de dos transacciones sincronizadas. Ambas pasan la validación preventiva antes de insertar; PostgreSQL
+confirma exactamente una y rechaza la otra con SQLState `23505`.
 
 La suite incluye:
 
@@ -524,11 +542,13 @@ La suite incluye:
 - RN-03 con fecha de nacimiento ausente, actual y futura.
 - RN-05 en los límites de dos horas y treinta días, además del ciclo integral de tres penalizaciones y bloqueo.
 - Reprogramación exitosa y rollback completo cuando la nueva franja está ocupada.
+- Flyway, tipos temporales, Specifications y rollback contra PostgreSQL 17 mediante Testcontainers.
+- Concurrencia real con dos hilos sincronizados y una única reserva confirmada por la base de datos.
 - Disponibilidad acotada a 90 días y paginación con límites, metadatos y filtros combinados.
 - Contrato global de errores para dominio, Bean Validation, JSON, parámetros, persistencia, 404, 405, 415 y 500 seguros.
 - Calendario colombiano, incluyendo Ley Emiliani, Pascua y el festivo creado en 2026.
 - Restricciones de arquitectura hexagonal con ArchUnit.
-- GitHub Actions ejecuta `mvn verify` y aplica la barrera JaCoCo en cada push a `main` y pull request.
+- GitHub Actions ejecuta `mvn verify`, PostgreSQL Testcontainers y la barrera JaCoCo en cada push a `main` y pull request.
 
 ## Seguridad y operación
 

@@ -10,7 +10,6 @@ import com.medisalud.domain.port.MedicoRepositoryPort;
 import com.medisalud.domain.port.PacienteRepositoryPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 
@@ -19,8 +18,7 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(classes = MedisaludApplication.class)
-@AutoConfigureMockMvc
-class CitaPersistenceConcurrencyIntegrationTest {
+class CitaPersistenceConstraintsIntegrationTest {
 
     @Autowired
     private CitaRepositoryPort citas;
