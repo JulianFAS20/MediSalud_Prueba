@@ -4,6 +4,18 @@ Backend REST para registrar médicos y pacientes, consultar disponibilidad, rese
 
 El proyecto prioriza reglas de negocio explícitas, aislamiento del dominio, consistencia transaccional y protección ante reservas concurrentes.
 
+[![CI](https://github.com/JulianFAS20/MediSalud_Prueba/actions/workflows/ci.yml/badge.svg)](https://github.com/JulianFAS20/MediSalud_Prueba/actions/workflows/ci.yml)
+
+**Demo pública:**
+
+- API: https://medisalud-api-julianfas20.onrender.com
+- Swagger UI: https://medisalud-api-julianfas20.onrender.com/swagger-ui.html
+- OpenAPI JSON: https://medisalud-api-julianfas20.onrender.com/v3/api-docs
+- Healthcheck: https://medisalud-api-julianfas20.onrender.com/actuator/health
+
+La instancia gratuita puede tardar cerca de un minuto en responder después de 15 minutos sin tráfico.
+Render la reactiva automáticamente con la siguiente solicitud; no requiere un despliegue manual.
+
 ## Inicio rápido
 
 ### Requisitos
@@ -28,7 +40,7 @@ incorporar correcciones de seguridad publicadas después del BOM de esa versión
 | Bases de datos | H2 para ejecución local y PostgreSQL 17 para un entorno productivo simulado |
 | Calidad | JUnit 5, Mockito, AssertJ, MockMvc, Testcontainers, ArchUnit y JaCoCo |
 | Productividad | Lombok, Maven y Postman |
-| Operación | Docker, Docker Compose y GitHub Actions |
+| Operación | Docker, Docker Compose, GitHub Actions y Render |
 
 ### Perfiles disponibles
 
@@ -255,8 +267,8 @@ Para ejecutarla:
 3. Ejecutar primero la carpeta `00 - Preparación` y continuar las carpetas en orden, o usar el Collection Runner.
 4. Para repetir toda la ejecución desde cero con el perfil local, reiniciar la API para limpiar la base H2 en memoria.
 
-Después del despliegue público, importar `MediSalud.Public.postman_environment.json`, completar
-`publicBaseUrl` con la URL HTTPS asignada por Render —sin `/` final— y seleccionar el ambiente
+Para usar el despliegue público, importar `MediSalud.Public.postman_environment.json`, asignar
+`publicBaseUrl = https://medisalud-api-julianfas20.onrender.com` —sin `/` final— y seleccionar el ambiente
 `MediSalud - API pública`. La carpeta `08 - API pública en Render` ejecuta un smoke test independiente:
 healthcheck, contrato OpenAPI, registro de médico y paciente, disponibilidad, reserva, listado y cancelación.
 No modifica `baseUrl`, por lo que los flujos locales y públicos pueden convivir en la misma colección.
@@ -305,6 +317,8 @@ el perfil `rn05`, el sistema vuelve automáticamente a `Clock.systemUTC()` y uti
 La URL base local es `http://localhost:8080/api/v1`. Las fechas de disponibilidad usan `YYYY-MM-DD` y
 los instantes de citas/filtros deben incluir offset ISO 8601, por ejemplo `2027-02-01T08:00:00-05:00`.
 Las respuestas se expresan en la zona `America/Bogota`.
+
+La URL base pública es `https://medisalud-api-julianfas20.onrender.com/api/v1` y expone el mismo contrato.
 
 El mismo contrato puede explorarse y ejecutarse en Swagger UI (`/swagger-ui.html`) o consumirse en
 formato OpenAPI 3.1 desde `/v3/api-docs`.
@@ -644,28 +658,31 @@ No se debe definir `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION`: el workflow ya usa
 
 ## Despliegue público en Render
 
-El archivo `render.yaml` define un servicio web Docker gratuito, healthcheck en `/actuator/health`, perfil
-`demo` y despliegue automático de `main` únicamente cuando los checks de GitHub terminan correctamente.
-Render construye la imagen directamente desde el repositorio, por lo que no se almacenan credenciales de
-nube en GitHub Actions y no hace falta un workflow adicional de despliegue.
+La API se encuentra publicada en
+[https://medisalud-api-julianfas20.onrender.com](https://medisalud-api-julianfas20.onrender.com) como un
+Web Service Docker administrado mediante el Blueprint `render.yaml`.
 
-Para publicarlo:
+El Blueprint declara una instancia `free`, healthcheck en `/actuator/health`, perfil `demo` y despliegue
+automático desde `main` únicamente cuando los checks de GitHub terminan correctamente. El flujo es:
 
-1. Subir estos cambios a la rama `main` del repositorio público.
-2. En Render, seleccionar **New > Blueprint**, conectar GitHub y elegir `MediSalud_Prueba`.
-3. Revisar el servicio `medisalud-api-julianfas20` detectado desde `render.yaml` y aplicar el Blueprint.
-4. Esperar a que finalice la construcción y comprobar `/actuator/health`, `/swagger-ui.html` y `/v3/api-docs` en la URL asignada.
-5. Usar esa URL como variable `baseUrl` en la colección Postman.
+1. Un push o merge llega a `main`.
+2. GitHub Actions ejecuta `mvn verify`, Testcontainers, ArchUnit y la barrera JaCoCo.
+3. Con los checks aprobados, Render construye el `Dockerfile` multietapa y publica la nueva imagen.
+4. Render comprueba `/actuator/health` antes de considerar el despliegue disponible.
 
-Si el nombre configurado está disponible, la URL esperada es
-`https://medisalud-api-julianfas20.onrender.com`; la URL definitiva siempre será la que muestre Render al
-crear el servicio.
+No hace falta un workflow adicional de despliegue ni almacenar credenciales de Render en GitHub. El
+Blueprint tampoco provisiona PostgreSQL, discos persistentes ni otros recursos pagos.
 
-El plan gratuito suspende el servicio después de 15 minutos sin tráfico, de modo que la primera petición
-puede tardar cerca de un minuto. El perfil `demo` usa H2 en memoria: los datos creados durante la prueba se
-reinician al suspenderse o desplegarse el servicio y la consola H2 permanece deshabilitada. Esta configuración
-es deliberada para una demostración pública sin secretos; un entorno productivo debe utilizar el perfil
-`postgres` con PostgreSQL administrado y credenciales gestionadas por la plataforma.
+El plan gratuito suspende el contenedor después de 15 minutos sin tráfico. La URL continúa en escucha y
+la siguiente solicitud reactiva la instancia automáticamente; el arranque en frío puede tardar 50 segundos
+o más. Si Postman agota su tiempo de espera, espere a que finalice el arranque y reintente la solicitud. No
+se debe usar **Manual Deploy** para despertar el servicio.
+
+El perfil `demo` usa H2 en memoria: pacientes, citas, penalizaciones y médicos adicionales se reinician al
+suspenderse, reiniciarse o desplegarse la instancia. Los tres médicos semilla se cargan nuevamente y la
+consola H2 permanece deshabilitada. Esta configuración es deliberada para una demostración pública sin
+secretos; un entorno productivo debe utilizar el perfil `postgres` con PostgreSQL administrado y
+credenciales gestionadas por la plataforma.
 
 ## Evolución
 
